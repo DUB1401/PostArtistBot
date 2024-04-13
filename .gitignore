@@ -1,0 +1,11 @@
+# Visual Studio project files.
+*.pyproj
+.vscode
+*.sln
+.vs
+
+# Users data.
+Data
+
+# Python cache.
+__pycache__
