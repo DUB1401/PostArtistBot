@@ -4,7 +4,7 @@ from Source.Functions import GenerateImagesList
 from Source.Users import UsersManager
 from telebot import types
 
-import telebot 
+import telebot
 
 #==========================================================================================#
 # >>>>> ИНИЦИАЛИЗАЦИЯ СКРИПТА <<<<< #
@@ -13,7 +13,7 @@ import telebot
 # Проверка поддержки используемой версии Python.
 CheckPythonMinimalVersion(3, 10)
 # Создание папок в корневой директории.
-MakeRootDirectories(["Data/Users"])
+MakeRootDirectories(["Data/Users", "Temp"])
 
 #==========================================================================================#
 # >>>>> ЧТЕНИЕ НАСТРОЕК <<<<< #
@@ -33,6 +33,13 @@ Bot = telebot.TeleBot(Settings["token"])
 # Инициализация интерфейсов.
 UsersManagerObject = UsersManager()
 ImageGeneratorObject = ImageGenerator(Settings)
+# Словарь общения с подмодулями.
+ComData = {
+	"users-manager": UsersManagerObject,
+	"image-generator": ImageGeneratorObject,
+	"bot": Bot,
+	"settings": Settings
+}
 
 # Обработка команды: start.
 @Bot.message_handler(commands = ["start"])
@@ -83,7 +90,7 @@ def Command(Message: types.Message):
 			Media = [
 				types.InputMediaPhoto(
 					open(f"Data/{Message.from_user.id}/{Index}.jpg", "rb"),
-					caption = "*Не удалось прикрепить иллюстрацию к посту, так как он имеет недопустимую длину\!*",
+					caption = "*Не удалось прикрепить иллюстрацию к посту, так как он имеет недопустимую длину!*",
 					parse_mode = "MarkdownV2"
 				)
 			]
@@ -116,8 +123,18 @@ def Command(Message: types.Message):
 def Command(Message: types.Message):
 	# Авторизация пользователя.
 	User = UsersManagerObject.auth(Message.from_user)
-	# Генерация иллюстраций.
-	GenerateImagesList(Settings, Bot, ImageGeneratorObject, Message, User)
+
+	# Если пост сохранён.
+	if User.post:
+		# Генерация иллюстраций.
+		GenerateImagesList(ComData, Message, User)
+
+	else:
+		# Отправка сообщения: не задан текст поста.
+		Bot.send_message(
+			chat_id = Message.chat.id,
+			text = "Вы не отправили текст поста для генерации иллюстрации.",
+		)
 
 # Обработка команды: clear.
 @Bot.message_handler(commands = ["clear"])
@@ -142,7 +159,7 @@ def Post(Message: types.Message):
 	# Запоминание текста поста.
 	UsersManagerObject.set_user_value(Message.from_user.id, "post", Message.html_text)
 	# Генерация иллюстраций.
-	GenerateImagesList(Settings, Bot, ImageGeneratorObject, Message, User)
+	GenerateImagesList(ComData, Message, User)
 	
 # Запуск обработки запросов Telegram.
 Bot.infinity_polling()

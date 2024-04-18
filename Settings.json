@@ -1,5 +1,7 @@
 {
 	"token": "",
-	"steps": 1,
+	"steps": 8,
+	"describe-by-gpt": true,
+	"one-description": false,
 	"parameters": []
 }

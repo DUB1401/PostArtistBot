@@ -11,6 +11,12 @@ class UserData:
 	#==========================================================================================#
 
 	@property
+	def description(self) -> str:
+		"""Описание поста, сгенерированное GPT-4."""
+
+		return self.__Data["description"]
+
+	@property
 	def id(self) -> int:
 		"""ID пользователя."""
 
@@ -62,7 +68,8 @@ class UsersManager:
 		self.__Users[UserInfo.id] = {
 			"premium": bool(UserInfo.is_premium),
 			"language": UserInfo.language_code.split("_")[0],
-			"post": None
+			"post": None,
+			"description": None
 		}
 		# Сохранение файла.
 		self.__SaveUser(UserInfo.id)
