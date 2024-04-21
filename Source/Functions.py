@@ -1,8 +1,15 @@
-from Source.Users import UserData
+from dublib.TelebotUtils import UserData
 from telebot import types
 from time import sleep
 
 import telebot 
+
+def AccessAlert(ChatID: int, Bot: telebot.TeleBot):
+	# Отправка сообщения: не хватает прав.
+	Bot.send_message(
+		chat_id = ChatID,
+		text = "Вы не можете использовать данного бота. Свяжитесь с администратором для получения полномочий."
+	)
 
 def GenerateImagesList(ComData: dict, Message: types.Message, User: UserData):
 	# Отправка сообщения: ожидание.
@@ -22,19 +29,19 @@ def GenerateImagesList(ComData: dict, Message: types.Message, User: UserData):
 		# Для указанного количества попыток.
 		for Index in range(4):
 			# Текст запроса.
-			Request = User.post
+			Request = User.get("post")
 
 			# Если используется трансляция через GPT.
 			if ComData["settings"]["describe-by-gpt"]:
 				# Получение описания поста.
-				Description = User.description
+				Description = User.get("description")
 
 				# Если пост не имеет описания.
-				if not User.description or not ComData["settings"]["one-description"]:
+				if not Description or not ComData["settings"]["one-description"]:
 					# Генерация описания поста.
-					Description = ComData["image-generator"].describe_post_by_gpt(User.post)
+					Description = ComData["image-generator"].describe_post_by_gpt(Request)
 					# Обновление описания поста.
-					ComData["users-manager"].set_user_value(Message.from_user.id, "description", Description)
+					ComData["users-manager"].get_user(Message.from_user.id).set("description", Description)
 
 				# Установка описания в качестве текста запроса.
 				Request = Description

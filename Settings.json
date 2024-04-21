@@ -1,7 +1,8 @@
 {
 	"token": "",
+	"password": "1234",
 	"steps": 8,
-	"describe-by-gpt": true,
+	"describe-by-gpt": false,
 	"one-description": false,
 	"parameters": []
 }
