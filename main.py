@@ -227,7 +227,7 @@ def Command(Message: types.Message):
 		# Отправка сообщения: приветствие.
 		Bot.send_message(
 			chat_id = Message.chat.id,
-			text = "Я бот для генерации иллюстраций, контекстно совместимых с предоставленным текстом и создан, чтобы помочь вам вести личный блог или канал. Пришлите мне пост для начала работы."
+			text = Settings["start-message"]
 		)
 
 	else: AccessAlert(Message.chat.id, Bot)
