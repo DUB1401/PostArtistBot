@@ -225,9 +225,16 @@ def Command(Message: types.Message):
 
 		try:
 			# Изменение пароля.
-			Settings["password"] = Message.text.split(" ")[-1]
+			Settings["password"] = Message.text.split(" ")[1]
 			# Сохранение конфигурации.
 			WriteJSON("Settings.json", Settings)
+
+		except IndexError:
+			# Отправка сообщения: не задан пароль.
+			Bot.send_message(
+				chat_id = Message.chat.id,
+				text = "Вы не указали новый пароль. Используйте команду по схеме:\n\n/password [STRING*]",
+			)
 		
 		except:
 			# Отправка сообщения: не удалось установить пароль.
