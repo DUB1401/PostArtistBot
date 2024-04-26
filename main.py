@@ -1,4 +1,4 @@
-from dublib.Methods import CheckPythonMinimalVersion, ChunkList, MakeRootDirectories, ReadJSON, RemoveFolderContent
+from dublib.Methods import CheckPythonMinimalVersion, ChunkList, MakeRootDirectories, ReadJSON, RemoveFolderContent, WriteJSON
 from Source.Functions import AccessAlert, GenerateImagesList
 from dublib.TelebotUtils import UsersManager, UserData
 from Source.ImageGenerator import ImageGenerator
@@ -51,7 +51,7 @@ def Command(Message: types.Message):
 	User = UsersManagerObject.auth(Message)
 
 	# Если пользователь имеет права администратора.
-	if User.is_admin:
+	if User.has_permissions("admin"):
 		# Отправка сообщения: информация о боте.
 		Bot.send_message(
 			chat_id = Message.chat.id,
@@ -69,33 +69,39 @@ def Command(Message: types.Message):
 	User = UsersManagerObject.auth(Message)
 	
 	# Если пользователь имеет права администратора.
-	if User.is_admin:
-		# Список администраторов.
-		Admins = UsersManagerObject.admins
-		# Разбить список администраторов на списки по 10 элементов.
-		Admins = ChunkList(Admins, 10)
+	if User.has_permissions("admin"):
+		# Список пользователей с доступом к боту.
+		Admins = UsersManagerObject.get_users(include_permissions = "base_access", exclude_permissions = "admin")
 
-		# Для каждой группы.
-		for Group in Admins:
-			# Текст сообщения.
-			Text = ""
-
+		# Если пользователи с доступом есть.
+		if len(Admins) > 0:
 			# Для каждого администратора.
-			for Admin in Group:
+			for Admin in Admins:
+				# Создание и настройка Inline-клавиатуры.
+				Keyboard = types.InlineKeyboardMarkup()
+				Button = types.InlineKeyboardButton(text = "Удалить", callback_data = f"remove_{Admin.id}")
+				Keyboard.add(Button)
 				# Ник пользователя.
 				Username = Markdown(str(Admin.username)).escaped_text
 				# Создание описания.
-				Text += f"*Пользователь:* [{Username}](https://t.me/{Username})\n*ID:* {Admin.id}\n\n"
+				Text = f"*Пользователь:* [{Username}](https://t.me/{Username})\n*ID:* {Admin.id}\n\n"
+				# Отправка сообщения: информация об пользователе.
+				Bot.send_message(
+					chat_id = Message.chat.id,
+					text = Text,
+					reply_markup = Keyboard,
+					parse_mode = "MarkdownV2",
+					disable_web_page_preview = True
+				)
+				# Выжидание интервала.
+				sleep(0.5)
 
-			# Отправка сообщения: информация об администраторах.
+		else:
+			# Отправка сообщения: пользователей с доступом нет.
 			Bot.send_message(
 				chat_id = Message.chat.id,
-				text = Text,
-				parse_mode = "MarkdownV2",
-				disable_web_page_preview = True
+				text = "Нет пользователей с дилегированными правами доступа."
 			)
-			# Выжидание интервала.
-			sleep(1)
 
 	else: AccessAlert(Message.chat.id, Bot)
 
@@ -105,10 +111,10 @@ def Command(Message: types.Message):
 	# Авторизация пользователя.
 	User = UsersManagerObject.auth(Message)
 
-	# Если пользователь имеет права администратора.
-	if User.is_admin:
+	# Если пользователь имеет право доступа.
+	if User.has_permissions("base_access"):
 		# Удаление текста поста.
-		User.set("post", None)
+		User.set_property("post", None)
 		# Удаление файлов.
 		if os.path.exists(f"Data/{Message.from_user.id}"): RemoveFolderContent(f"Data/{Message.from_user.id}")
 		# Отправка сообщения: данные сессии очищены.
@@ -125,11 +131,11 @@ def Command(Message: types.Message):
 	# Авторизация пользователя.
 	User = UsersManagerObject.auth(Message)
 
-	# Если пользователь имеет права администратора.
-	if User.is_admin:
+	# Если пользователь имеет право доступа.
+	if User.has_permissions("base_access"):
 
 		# Если у пользователя есть пост.
-		if User.get("post"):
+		if User.get_property("post"):
 			# Индексы команд.
 			Indexes = {
 				"/first": 0,
@@ -143,7 +149,7 @@ def Command(Message: types.Message):
 			Media = [
 				types.InputMediaPhoto(
 					open(f"Data/{Message.from_user.id}/{Index}.jpg", "rb"), 
-					caption = User.get("post"),
+					caption = User.get_property("post"),
 					parse_mode = "HTML"
 				)
 			]
@@ -172,12 +178,12 @@ def Command(Message: types.Message):
 				# Отправка сообщения: пост.
 				Bot.send_message(
 					chat_id = Message.chat.id,
-					text = User.get("post"),
+					text = User.get_property("post"),
 					parse_mode = "HTML"
 				)
 
 			# Удаление текста поста.
-			User.set("post", None)
+			User.set_property("post", None)
 			# Удаление файлов.
 			RemoveFolderContent(f"Data/{Message.from_user.id}")
 
@@ -190,25 +196,51 @@ def Command(Message: types.Message):
 
 	else: AccessAlert(Message.chat.id, Bot)
 
-# Обработка команды: retry.
-@Bot.message_handler(commands = ["retry"])
+# Обработка команды: remove.
+@Bot.message_handler(commands = ["about"])
 def Command(Message: types.Message):
 	# Авторизация пользователя.
 	User = UsersManagerObject.auth(Message)
 
 	# Если пользователь имеет права администратора.
-	if User.is_admin:
+	if User.has_permissions("admin"):
+		# Отправка сообщения: право доступа отозвано.
+		Bot.send_message(
+			chat_id = Message.chat.id,
+			text = Message.text + " отозваны",
+			#parse_mode = "MarkdownV2",
+			disable_web_page_preview = True
+		)
 
-		# Если пост сохранён.
-		if User.get("post"):
-			# Генерация иллюстраций.
-			GenerateImagesList(ComData, Message, User)
+	else: AccessAlert(Message.chat.id, Bot)
 
-		else:
-			# Отправка сообщения: не задан текст поста.
+# Обработка команды: password.
+@Bot.message_handler(commands = ["password"])
+def Command(Message: types.Message):
+	# Авторизация пользователя.
+	User = UsersManagerObject.auth(Message)
+
+	# Если пользователь имеет право доступа.
+	if User.has_permissions("admin"):
+
+		try:
+			# Изменение пароля.
+			Settings["password"] = Message.text.split(" ")[-1]
+			# Сохранение конфигурации.
+			WriteJSON("Settings.json", Settings)
+		
+		except:
+			# Отправка сообщения: не удалось установить пароль.
 			Bot.send_message(
 				chat_id = Message.chat.id,
-				text = "Вы не отправили текст поста для генерации иллюстрации.",
+				text = "Во время смены пароля возникла ошибка. Обратитесь к разработчику."
+			)
+
+		else:
+			# Отправка сообщения: новый пароль доступа установлен.
+			Bot.send_message(
+				chat_id = Message.chat.id,
+				text = "Пароль успешно изменён."
 			)
 
 	else: AccessAlert(Message.chat.id, Bot)
@@ -219,11 +251,11 @@ def Command(Message: types.Message):
 	# Авторизация пользователя.
 	User = UsersManagerObject.auth(Message)
 	# Создание свойств пользователя.
-	User.set("post", None)
-	User.set("description", None)
+	User.set_property("post", None)
+	User.set_property("description", None)
 
-	# Если пользователь имеет права администратора.
-	if User.is_admin:
+	# Если пользователь имеет право доступа.
+	if User.has_permissions("base_access"):
 		# Отправка сообщения: приветствие.
 		Bot.send_message(
 			chat_id = Message.chat.id,
@@ -237,25 +269,63 @@ def Command(Message: types.Message):
 def Post(Message: types.Message):
 	# Авторизация пользователя.
 	User = UsersManagerObject.auth(Message)
+	# Состояние: осуществлялся ли ввод пароля.
+	IsPassword = False
 
 	# Если сообщение соответствует паролю.
 	if Message.text == Settings["password"]:
 		# Выдача прав администратора.
-		User.set_admin(True)
+		User.add_permissions(["base_access"])
 		# Отправка сообщения: доступ разрешён.
 		Bot.send_message(
 			chat_id = Message.chat.id,
 			text = "Доступ к функциям бота разрешён."
 		)
+		# Переключение состояния.
+		IsPassword = True
 
-	# Если пользователь имеет права администратора.
-	elif User.is_admin:
+	# Если сообщение соответствует паролю администратора.
+	if Message.text == Settings["admin-password"]:
+		# Выдача прав администратора.
+		User.add_permissions(["admin", "base_access"])
+		# Отправка сообщения: доступ разрешён.
+		Bot.send_message(
+			chat_id = Message.chat.id,
+			text = "Доступ к функциям бота от имени администратора разрешён."
+		)
+		# Переключение состояния.
+		IsPassword = True
+
+	# Если пароль не вводился и пользователь имеет право доступа.
+	if not IsPassword and User.has_permissions("base_access"):
 		# Запоминание текста поста.
-		User.set("post", Message.html_text)
+		User.set_property("post", Message.html_text)
 		# Генерация иллюстраций.
 		GenerateImagesList(ComData, Message, User)
 
-	else: AccessAlert(Message.chat.id, Bot)
+	elif not IsPassword: AccessAlert(Message.chat.id, Bot)
 	
+# Обработка Inline-запросов: remove.
+@Bot.callback_query_handler(func = lambda Query: True)
+def CallbackQuery(Query: types.CallbackQuery):
+	# Авторизация пользователя.
+	User = UsersManagerObject.auth(Query)
+	
+	# Если пользователь имеет право доступа.
+	if User.has_permissions("admin"):
+		# ID цели.
+		TargetID = Query.data.split("_")[-1]
+		# Целевой пользователь.
+		TargetUser = UsersManagerObject.get_user(TargetID)
+		# Удаление права доступа.
+		TargetUser.remove_permissions("base_access")
+		# Удаление сообщения: данные пользователя.
+		Bot.delete_message(Query.message.chat.id, Query.message.message_id)
+		# Отправка сообщения: у пользователя отозваны право доступа.
+		Bot.send_message(
+			chat_id = Query.message.chat.id,
+			text = f"Право доступа к боту отозвано у пользователя с ID {TargetID}.",
+		)
+
 # Запуск обработки запросов Telegram.
 Bot.infinity_polling()

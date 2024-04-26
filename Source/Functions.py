@@ -8,7 +8,7 @@ def AccessAlert(ChatID: int, Bot: telebot.TeleBot):
 	# Отправка сообщения: не хватает прав.
 	Bot.send_message(
 		chat_id = ChatID,
-		text = "Вы не можете использовать данного бота. Свяжитесь с администратором для получения полномочий."
+		text = "У вас не хватает парв для использования данного функционала. Свяжитесь с администратором для получения полномочий."
 	)
 
 def GenerateImagesList(ComData: dict, Message: types.Message, User: UserData):
@@ -29,12 +29,12 @@ def GenerateImagesList(ComData: dict, Message: types.Message, User: UserData):
 		# Для указанного количества попыток.
 		for Index in range(4):
 			# Текст запроса.
-			Request = User.get("post")
+			Request = User.get_property("post")
 
 			# Если используется трансляция через GPT.
 			if ComData["settings"]["describe-by-gpt"]:
 				# Получение описания поста.
-				Description = User.get("description")
+				Description = User.get_property("description")
 
 				# Если пост не имеет описания.
 				if not Description or not ComData["settings"]["one-description"]:
