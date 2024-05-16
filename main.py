@@ -25,14 +25,14 @@ MakeRootDirectories(["Data/Users", "Temp"])
 # Чтение настроек.
 Settings = ReadJSON("Settings.json")
 # Если токен не указан, выбросить исключение.
-if type(Settings["token"]) != str or Settings["token"].strip() == "": raise Exception("Invalid Telegram bot token.")
+if type(Settings["bot-token"]) != str or Settings["bot-token"].strip() == "": raise Exception("Invalid Telegram bot token.")
 
 #==========================================================================================#
 # >>>>> ВЗАИМОДЕЙСТВИЕ С ПОЛЬЗОВАТЕЛЕМ <<<<< #
 #==========================================================================================#
 
 # Токен для работы определенного бота телегамм.
-Bot = telebot.TeleBot(Settings["token"])
+Bot = telebot.TeleBot(Settings["bot-token"])
 # Инициализация интерфейсов.
 UsersManagerObject = UsersManager("Data/Users")
 ImageGeneratorObject = ImageGenerator(Settings)
@@ -48,7 +48,7 @@ ComData = {
 @Bot.message_handler(commands = ["about"])
 def Command(Message: types.Message):
 	# Авторизация пользователя.
-	User = UsersManagerObject.auth(Message)
+	User = UsersManagerObject.auth(Message.from_user)
 
 	# Если пользователь имеет права администратора.
 	if User.has_permissions("admin"):
@@ -66,7 +66,7 @@ def Command(Message: types.Message):
 @Bot.message_handler(commands = ["admins"])
 def Command(Message: types.Message):
 	# Авторизация пользователя.
-	User = UsersManagerObject.auth(Message)
+	User = UsersManagerObject.auth(Message.from_user)
 	
 	# Если пользователь имеет права администратора.
 	if User.has_permissions("admin"):
@@ -109,7 +109,7 @@ def Command(Message: types.Message):
 @Bot.message_handler(commands = ["clear"])
 def Command(Message: types.Message):
 	# Авторизация пользователя.
-	User = UsersManagerObject.auth(Message)
+	User = UsersManagerObject.auth(Message.from_user)
 
 	# Если пользователь имеет право доступа.
 	if User.has_permissions("base_access"):
@@ -129,7 +129,7 @@ def Command(Message: types.Message):
 @Bot.message_handler(commands = ["first", "second", "third", "fourth"])
 def Command(Message: types.Message):
 	# Авторизация пользователя.
-	User = UsersManagerObject.auth(Message)
+	User = UsersManagerObject.auth(Message.from_user)
 
 	# Если пользователь имеет право доступа.
 	if User.has_permissions("base_access"):
@@ -200,7 +200,7 @@ def Command(Message: types.Message):
 @Bot.message_handler(commands = ["about"])
 def Command(Message: types.Message):
 	# Авторизация пользователя.
-	User = UsersManagerObject.auth(Message)
+	User = UsersManagerObject.auth(Message.from_user)
 
 	# Если пользователь имеет права администратора.
 	if User.has_permissions("admin"):
@@ -214,11 +214,34 @@ def Command(Message: types.Message):
 
 	else: AccessAlert(Message.chat.id, Bot)
 
+# Обработка команды: retry.
+@Bot.message_handler(commands = ["retry"])
+def Command(Message: types.Message):
+	# Авторизация пользователя.
+	User = UsersManagerObject.auth(Message.from_user)
+
+	# Если пользователь имеет право доступа.
+	if User.has_permissions("base_access"):
+
+		# Если задан текст поста.
+		if User.get_property("post"):
+			# Генерация иллюстраций.
+			GenerateImagesList(ComData, Message, User)
+
+		else:
+			# Отправка сообщения: не задан текст поста.
+			Bot.send_message(
+				chat_id = Message.chat.id,
+				text = "Вы не отправили текст поста для генерации иллюстрации.",
+			)
+
+	else: AccessAlert(Message.chat.id, Bot)
+
 # Обработка команды: password.
 @Bot.message_handler(commands = ["password"])
 def Command(Message: types.Message):
 	# Авторизация пользователя.
-	User = UsersManagerObject.auth(Message)
+	User = UsersManagerObject.auth(Message.from_user)
 
 	# Если пользователь имеет право доступа.
 	if User.has_permissions("admin"):
@@ -256,10 +279,10 @@ def Command(Message: types.Message):
 @Bot.message_handler(commands = ["start"])
 def Command(Message: types.Message):
 	# Авторизация пользователя.
-	User = UsersManagerObject.auth(Message)
+	User = UsersManagerObject.auth(Message.from_user)
 	# Создание свойств пользователя.
-	User.set_property("post", None)
-	User.set_property("description", None)
+	User.create_property("post", None)
+	User.create_property("description", None)
 
 	# Если пользователь имеет право доступа.
 	if User.has_permissions("base_access"):
@@ -275,7 +298,7 @@ def Command(Message: types.Message):
 @Bot.message_handler(content_types = ["text"])
 def Post(Message: types.Message):
 	# Авторизация пользователя.
-	User = UsersManagerObject.auth(Message)
+	User = UsersManagerObject.auth(Message.from_user)
 	# Состояние: осуществлялся ли ввод пароля.
 	IsPassword = False
 
@@ -316,7 +339,7 @@ def Post(Message: types.Message):
 @Bot.callback_query_handler(func = lambda Query: True)
 def CallbackQuery(Query: types.CallbackQuery):
 	# Авторизация пользователя.
-	User = UsersManagerObject.auth(Query)
+	User = UsersManagerObject.auth(Query.from_user)
 	
 	# Если пользователь имеет право доступа.
 	if User.has_permissions("admin"):

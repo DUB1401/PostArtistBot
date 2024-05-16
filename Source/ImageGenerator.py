@@ -8,7 +8,7 @@ import os
 import re
 
 #==========================================================================================#
-# >>>>> ВСПОМОГАТЕЛЬНЫЕ ТИПЫ ДАННЫХ <<<<< #
+# >>>>> ИСКЛЮЧЕНИЯ <<<<< #
 #==========================================================================================#
 
 class BadStepsCount(Exception):
@@ -38,16 +38,17 @@ class ImageGenerator:
 		
 		return text
 
-	def __init__(self, Settings: dict):
+	def __init__(self, settings: dict):
 
 		#---> Генерация динамических свойств.
 		#==========================================================================================#
 		# Клиент генератора.
-		self.__Client = Client("AP123/SDXL-Lightning", output_dir = "./Temp")
+		self.__Client = Client(settings["hf-space"], hf_token = settings["hf-token"])
+		self.__Client.output_dir = "./Temp"
 		# Список доступных количеств шагов.
 		self.__Steps = [1, 2, 4, 8]
 		# Глобальные настройки.
-		self.__Settings = Settings.copy()
+		self.__Settings = settings.copy()
 
 	def describe_post_by_gpt(self, post: str) -> str:
 		# Текст запроса.
@@ -94,7 +95,7 @@ class ImageGenerator:
 				# Если в изображении используется более одного цвета, считать генерацию успешной.
 				if ColorsList == None or len(CurrentImage.getcolors()) > 1: IsSuccess = True
 			
-			except ValueError: pass
+			except Exception as ExceptionData: print(ExceptionData)
 
 			# Инкремент попытки.
 			Try += 1
