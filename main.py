@@ -1,8 +1,9 @@
 from dublib.Methods import CheckPythonMinimalVersion, ChunkList, MakeRootDirectories, ReadJSON, RemoveFolderContent, WriteJSON
-from Source.Functions import AccessAlert, GenerateImagesList
+from Source.Functions import AccessAlert
 from dublib.TelebotUtils import UsersManager, UserData
 from Source.ImageGenerator import ImageGenerator
 from dublib.Polyglot import Markdown
+from Source.Queue import Queue
 from telebot import types
 from time import sleep
 
@@ -35,14 +36,7 @@ if type(Settings["bot-token"]) != str or Settings["bot-token"].strip() == "": ra
 Bot = telebot.TeleBot(Settings["bot-token"])
 # Инициализация интерфейсов.
 UsersManagerObject = UsersManager("Data/Users")
-ImageGeneratorObject = ImageGenerator(Settings)
-# Словарь общения с подмодулями.
-ComData = {
-	"users-manager": UsersManagerObject,
-	"image-generator": ImageGeneratorObject,
-	"bot": Bot,
-	"settings": Settings
-}
+QueueObject = Queue(Settings, Bot)
 
 # Обработка команды: about.
 @Bot.message_handler(commands = ["about"])
@@ -225,8 +219,10 @@ def Command(Message: types.Message):
 
 		# Если задан текст поста.
 		if User.get_property("post"):
-			# Генерация иллюстраций.
-			GenerateImagesList(ComData, Message, User)
+			# Удаление описания.
+			User.create_property("description", None)
+			# Добавление запроса на генерацию в очередь.
+			QueueObject.append(Message.chat.id, User)
 
 		else:
 			# Отправка сообщения: не задан текст поста.
@@ -330,8 +326,8 @@ def Post(Message: types.Message):
 	if not IsPassword and User.has_permissions("base_access"):
 		# Запоминание текста поста.
 		User.set_property("post", Message.html_text)
-		# Генерация иллюстраций.
-		GenerateImagesList(ComData, Message, User)
+		# Добавление запроса на генерацию в очередь.
+		QueueObject.append(Message.chat.id, User)
 
 	elif not IsPassword: AccessAlert(Message.chat.id, Bot)
 	

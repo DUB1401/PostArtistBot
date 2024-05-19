@@ -1,5 +1,6 @@
 pyTelegramBotAPI
 deep-translator
+huggingface_hub
 gradio-client
 dublib==0.6.2
 Pillow
