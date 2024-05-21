@@ -65,7 +65,9 @@ class Queue:
 				CurrentRequest = self.__QueueData[0]
 				# Индекс повтора.
 				Index = 0
-
+				# Данные об общении с пользователем.
+				Message = None
+				
 				try:
 					# Редактирование сообщения: выделение ядра.
 					Message = self.__Bot.send_message(
@@ -124,7 +126,7 @@ class Queue:
 							self.__Bot.edit_message_text(
 								chat_id = CurrentRequest.chat_id,
 								message_id = Message.message_id,
-								text = "Идёт генерация иллюстраций\\.\\.\\.\n\nПрогресс: " + str(Index + 1) + " / 4 (отправка)",
+								text = "Идёт генерация иллюстраций\\.\\.\\.\n\nПрогресс: " + str(Index + 1) + " / 4 \\(отправка\\)",
 								parse_mode = "MarkdownV2"
 							)
 							# Отправка сообщения: иллюстрация.
@@ -157,7 +159,7 @@ class Queue:
 				# Удаление временных файлов.
 				RemoveFolderContent("Temp")
 				# Перезапуск пространсва.
-				self.__HuggingAPI.restart_space(self.__Settings["hf-space"], token = self.__Settings["hf-token"])
+				if self.__Settings["hf-token"]: self.__HuggingAPI.restart_space(self.__Settings["hf-space"], token = self.__Settings["hf-token"])
 
 			else: break
 
@@ -199,10 +201,17 @@ class Queue:
 			user – объектное представление данных пользователя.
 		"""
 
+		# Состояние: первым ли в очереди пользователь.
+		IsFirst = not bool(len(self.__QueueData))
 		# Добавление запроса в очередь.
 		self.__QueueData.append(Request(chat_id, user))
 		# Запуск потока обработки.
 		self.run()
+		# Отправка сообщения: пользователь не первый в очереди.
+		if not IsFirst: self.__Bot.send_message(
+			chat_id = chat_id,
+			text = "В данный момент кто-то уже генерирует иллюстрацию. Ваш запрос помещён в очередь и будет обработан сразу же, как появится возможность."
+		)
 
 	def run(self):
 		"""Запускает поток обработки очереди запросов."""
