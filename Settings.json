@@ -1,12 +1,18 @@
 {
-	"bot-token": "",
-	"hf-space": "AP123/SDXL-Lightning",
-	"hf-token": null,
+	"bot_token": "",
 	"password": "1234",
-	"admin-password": "5678",
-	"start-message": "Я бот для генерации иллюстраций, контекстно совместимых с предоставленным текстом и создан, чтобы помочь вам вести личный блог или канал. Пришлите мне пост для начала работы.",
-	"steps": 8,
-	"describe-by-gpt": false,
-	"reboot-for-all-requests": false,
-	"parameters": []
+	"admin_password": "5678",
+	"hf_space": "KingNish/SDXL-Flash",
+	"hf_token": "",
+	"proxy": "",
+	"sdxl_flash": {
+		"negative": [],
+		"steps": 8
+	},
+	"ratio": {
+		"horizontal": [1080, 720],
+		"square": [1024, 1024],
+		"vertical": [720, 1080]
+	},
+	"start_message": "Я бот для генерации иллюстраций, контекстно совместимых с предоставленным текстом и создан, чтобы помочь вам вести личный блог или канал. Пришлите мне текст поста для начала работы."
 }

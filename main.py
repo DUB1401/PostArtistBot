@@ -1,39 +1,41 @@
-from Source.Functions import AccessAlert
-from Source.Queue import Queue
+from Source.Core.Functions import AccessAlert
+from Source.UI import InlineKeyboards
+from Source.Core.Queue import Queue
 
 from dublib.Methods.Filesystem import MakeRootDirectories, RemoveDirectoryContent
-from dublib.Methods.System import CheckPythonMinimalVersion
-from dublib.Methods.JSON import ReadJSON, WriteJSON
+from dublib.Methods.System import CheckPythonMinimalVersion, Clear
+from dublib.Methods.Filesystem import ReadJSON, WriteJSON
 from dublib.TelebotUtils import UsersManager
 from dublib.Polyglot import Markdown
-from telebot import types
-from time import sleep
 
-import telebot
+from time import sleep
 import os
+
+from telebot import types
+import telebot
 
 #==========================================================================================#
 # >>>>> ИНИЦИАЛИЗАЦИЯ СКРИПТА <<<<< #
 #==========================================================================================#
 
+Clear()
 CheckPythonMinimalVersion(3, 10)
-MakeRootDirectories(["Data/Users", "Temp"])
-
-#==========================================================================================#
-# >>>>> ЧТЕНИЕ НАСТРОЕК <<<<< #
-#==========================================================================================#
+MakeRootDirectories(("Data/Buffer", "Data/Users", "Temp"))
 
 Settings = ReadJSON("Settings.json")
-if type(Settings["bot-token"]) != str or Settings["bot-token"].strip() == "": raise Exception("Invalid Telegram bot token.")
+
+if Settings["proxy"]:
+	os.environ["HTTP_PROXY"] = Settings["proxy"]
+	os.environ["HTTPS_PROXY"] = Settings["proxy"]
+
+Bot = telebot.TeleBot(Settings["bot_token"])
+
+UsersManagerObject = UsersManager("Data/Users")
+QueueObject = Queue(Settings, Bot)
 
 #==========================================================================================#
 # >>>>> ВЗАИМОДЕЙСТВИЕ С ПОЛЬЗОВАТЕЛЕМ <<<<< #
 #==========================================================================================#
-
-Bot = telebot.TeleBot(Settings["bot-token"])
-
-UsersManagerObject = UsersManager("Data/Users")
-QueueObject = Queue(Settings, Bot)
 
 @Bot.message_handler(commands = ["about"])
 def Command(Message: types.Message):
@@ -42,7 +44,7 @@ def Command(Message: types.Message):
 	if User.has_permissions("admin"):
 		Bot.send_message(
 			chat_id = Message.chat.id,
-			text = "*PostArtistBot* является Open Source проектом под лицензией Apache 2\\.0 за авторством [@DUB1401](https://github.com/DUB1401) и использует модели GPT\\-4 и Stable Diffusion XL в своей работе для генерации иллюстраций к постам\\. Исходный код и документация доступны в [этом](https://github.com/DUB1401/PostArtistBot) репозитории\\.",
+			text = "*PostArtistBot* является Open Source проектом под лицензией Apache 2\\.0 за авторством [@DUB1401](https://github.com/DUB1401) и использует модели GPT\\-4 и Stable Diffusion Flash в своей работе для генерации иллюстраций к постам\\. Исходный код и документация доступны в [этом](https://github.com/DUB1401/PostArtistBot) репозитории\\.",
 			parse_mode = "MarkdownV2",
 			disable_web_page_preview = True
 		)
@@ -110,7 +112,7 @@ def Command(Message: types.Message):
 			Index = Indexes[Message.text]
 			Media = [
 				types.InputMediaPhoto(
-					open(f"Data/{Message.from_user.id}/{Index}.jpg", "rb"), 
+					open(f"Data/Buffer/{Message.from_user.id}/{Index}.jpg", "rb"), 
 					caption = User.get_property("post"),
 					parse_mode = "HTML"
 				)
@@ -148,20 +150,6 @@ def Command(Message: types.Message):
 				chat_id = Message.chat.id,
 				text = "Вы не отправили текст поста для генерации иллюстрации.",
 			)
-
-	else: AccessAlert(Message.chat.id, Bot)
-
-@Bot.message_handler(commands = ["about"])
-def Command(Message: types.Message):
-	User = UsersManagerObject.auth(Message.from_user)
-
-	if User.has_permissions("admin"):
-		Bot.send_message(
-			chat_id = Message.chat.id,
-			text = Message.text + " отозваны",
-			#parse_mode = "MarkdownV2",
-			disable_web_page_preview = True
-		)
 
 	else: AccessAlert(Message.chat.id, Bot)
 
@@ -222,7 +210,7 @@ def Command(Message: types.Message):
 	if User.has_permissions("base_access"):
 		Bot.send_message(
 			chat_id = Message.chat.id,
-			text = Settings["start-message"]
+			text = Settings["start_message"]
 		)
 
 	else: AccessAlert(Message.chat.id, Bot)
@@ -240,7 +228,7 @@ def Post(Message: types.Message):
 		)
 		IsPassword = True
 
-	if Message.text == Settings["admin-password"]:
+	if Message.text == Settings["admin_password"]:
 		User.add_permissions(["admin", "base_access"])
 		Bot.send_message(
 			chat_id = Message.chat.id,
@@ -249,11 +237,26 @@ def Post(Message: types.Message):
 		IsPassword = True
 
 	if not IsPassword and User.has_permissions("base_access"):
-		User.set_property("post", Message.html_text)
-		QueueObject.append(Message.chat.id, User)
+		User.set_property("post", Message.text)
+		Bot.send_message(
+			chat_id = User.id,
+			text = "Выберите соотношение сторон иллюстрации.",
+			reply_markup = InlineKeyboards.select_ration()
+		)
 
 	elif not IsPassword: AccessAlert(Message.chat.id, Bot)
 	
+@Bot.callback_query_handler(lambda Call: Call.data.startswith("ratio"))
+def CallbackQuery(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+	Bot.delete_message(User.id, Call.message.id)
+
+	if User.has_permissions("base_access"):
+		User.set_property("ratio", Call.data.split("_")[-1])
+		QueueObject.append(User)
+
+	else: AccessAlert(User.id, Bot)
+
 @Bot.callback_query_handler(func = lambda Query: True)
 def CallbackQuery(Query: types.CallbackQuery):
 	User = UsersManagerObject.auth(Query.from_user)
