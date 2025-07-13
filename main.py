@@ -1,12 +1,13 @@
-from Source.Core.Functions import AccessAlert
+from Source.Core.Functions import AccessAlert, SendPostWithImage, SendPostWithVideo
+from Source.Core.Kling import KlingAdapter, KlingOptions
+from Source.Core.ImageGenerator import ImageGenerator
 from Source.UI import InlineKeyboards
 from Source.Core.Queue import Queue
 
 from dublib.Methods.Filesystem import MakeRootDirectories, RemoveDirectoryContent
 from dublib.Methods.System import CheckPythonMinimalVersion, Clear
 from dublib.Methods.Filesystem import ReadJSON, WriteJSON
-from dublib.TelebotUtils import UsersManager
-from dublib.Polyglot import Markdown
+from dublib.TelebotUtils import TeleMaster, UsersManager
 
 from time import sleep
 import os
@@ -29,9 +30,15 @@ if Settings["proxy"]:
 	os.environ["HTTPS_PROXY"] = Settings["proxy"]
 
 Bot = telebot.TeleBot(Settings["bot_token"])
+Master = TeleMaster(Bot)
 
 UsersManagerObject = UsersManager("Data/Users")
-QueueObject = Queue(Settings, Bot)
+
+GeneratorSDXL = ImageGenerator(Settings["sdxl_flash"])
+Kling = KlingAdapter(Settings["kling_ai"]["cookies"])
+QueueObject = Queue(Bot,GeneratorSDXL, Kling)
+
+MIN_COINS = Settings["kling_ai"]["min_coins"]
 
 #==========================================================================================#
 # >>>>> ВЗАИМОДЕЙСТВИЕ С ПОЛЬЗОВАТЕЛЕМ <<<<< #
@@ -44,8 +51,8 @@ def Command(Message: types.Message):
 	if User.has_permissions("admin"):
 		Bot.send_message(
 			chat_id = Message.chat.id,
-			text = "*PostArtistBot* является Open Source проектом под лицензией Apache 2\\.0 за авторством [@DUB1401](https://github.com/DUB1401) и использует модели GPT\\-4 и Stable Diffusion Flash в своей работе для генерации иллюстраций к постам\\. Исходный код и документация доступны в [этом](https://github.com/DUB1401/PostArtistBot) репозитории\\.",
-			parse_mode = "MarkdownV2",
+			text = "<b>PostArtistBot</b> является Open Source проектом под лицензией Apache 2.0 за авторством <a href=\"https://github.com/DUB1401\">@DUB1401</a> и использует модели Stable Diffusion Flash и Kling AI в своей работе для генерации иллюстраций и видео к постам. Исходный код и документация доступны в <a href=\"https://github.com/DUB1401/PostArtistBot\">этом</a> репозитории.",
+			parse_mode = "HTML",
 			disable_web_page_preview = True
 		)
 
@@ -56,20 +63,26 @@ def Command(Message: types.Message):
 	User = UsersManagerObject.auth(Message.from_user)
 	
 	if User.has_permissions("admin"):
-		Admins = UsersManagerObject.get_users(include_permissions = "base_access", exclude_permissions = "admin")
+		Admins = UsersManagerObject.get_users(include_permissions = "base_access")
 
 		if len(Admins) > 0:
 			for Admin in Admins:
 				Keyboard = types.InlineKeyboardMarkup()
 				Button = types.InlineKeyboardButton(text = "Удалить", callback_data = f"remove_{Admin.id}")
 				Keyboard.add(Button)
-				Username = Markdown(str(Admin.username)).escaped_text
-				Text = f"*Пользователь:* [{Username}](https://t.me/{Username})\n*ID:* {Admin.id}\n\n"
+
+				Text = [
+					 f"<b>Пользователь:</b> <a href=\"https://t.me/{Admin.username}\">{Admin.username}</a>",
+					 f"<b>ID:</b> {Admin.id}"
+				]
+
+				if Admin.has_permissions("admin"): Text.append("\n<i>Администратор!</i>")
+
 				Bot.send_message(
 					chat_id = Message.chat.id,
-					text = Text,
-					reply_markup = Keyboard,
-					parse_mode = "MarkdownV2",
+					text = "\n".join(Text),
+					reply_markup = Keyboard if not Admin.has_permissions("admin") else None,
+					parse_mode = "HTML",
 					disable_web_page_preview = True
 				)
 				sleep(0.5)
@@ -100,50 +113,27 @@ def Command(Message: types.Message):
 def Command(Message: types.Message):
 	User = UsersManagerObject.auth(Message.from_user)
 
+	Indexes = {
+		"/first": 0,
+		"/second": 1,
+		"/third": 2,
+		"/fourth": 3
+	}
+	Index = Indexes[Message.text]
+
 	if User.has_permissions("base_access"):
 
-		if User.get_property("post"):
-			Indexes = {
-				"/first": 0,
-				"/second": 1,
-				"/third": 2,
-				"/fourth": 3
-			}
-			Index = Indexes[Message.text]
-			Media = [
-				types.InputMediaPhoto(
-					open(f"Data/Buffer/{Message.from_user.id}/{Index}.jpg", "rb"), 
-					caption = User.get_property("post"),
-					parse_mode = "HTML"
-				)
-			]
+		if Kling.is_enabled and Kling.coins_count > MIN_COINS:
+			Bot.send_message(
+				chat_id = User.id,
+				text = f"Желаете сгенерировать короткое видео на основе этой иллюстрации при помощи <b>Kling AI</b>?\n\nМонет доступно: {Kling.coins_count} 🔥",
+				parse_mode = "HTML",
+				reply_markup = InlineKeyboards.kling_answer()
+			)
+			KlingOptions(User).select_image(Index)
 
-			try:
-				Bot.send_media_group(
-					chat_id = Message.chat.id,
-					media = Media
-				)
-
-			except:
-				Media = [
-					types.InputMediaPhoto(
-						open(f"Data/{Message.from_user.id}/{Index}.jpg", "rb"),
-						caption = "*Не удалось прикрепить иллюстрацию к посту, так как он имеет недопустимую длину!*",
-						parse_mode = "MarkdownV2"
-					)
-				]
-				Bot.send_media_group(
-					chat_id = Message.chat.id,
-					media = Media
-				)
-				Bot.send_message(
-					chat_id = Message.chat.id,
-					text = User.get_property("post"),
-					parse_mode = "HTML"
-				)
-
-			User.set_property("post", None)
-			RemoveDirectoryContent(f"Data/{Message.from_user.id}")
+		elif User.get_property("post"):
+			SendPostWithImage(Bot, User, f"Data/Buffer/{Message.from_user.id}/{Index}.jpg")
 
 		else:
 			Bot.send_message(
@@ -210,7 +200,7 @@ def Command(Message: types.Message):
 	if User.has_permissions("base_access"):
 		Bot.send_message(
 			chat_id = Message.chat.id,
-			text = Settings["start_message"]
+			text = "Я бот для генерации иллюстраций, контекстно совместимых с предоставленным текстом, и создан, чтобы помочь вам вести личный блог или канал. Пришлите мне текст для начала работы."
 		)
 
 	else: AccessAlert(Message.chat.id, Bot)
@@ -218,33 +208,49 @@ def Command(Message: types.Message):
 @Bot.message_handler(content_types = ["text"])
 def Post(Message: types.Message):
 	User = UsersManagerObject.auth(Message.from_user)
-	IsPassword = False
 
-	if Message.text == Settings["password"]:
-		User.add_permissions(["base_access"])
-		Bot.send_message(
-			chat_id = Message.chat.id,
-			text = "Доступ к функциям бота разрешён."
-		)
-		IsPassword = True
+	if User.expected_type == "prompt":
+		Options = KlingOptions(User)
+		Options.set_prompt(Message.text)
 
-	if Message.text == Settings["admin_password"]:
-		User.add_permissions(["admin", "base_access"])
-		Bot.send_message(
-			chat_id = Message.chat.id,
-			text = "Доступ к функциям бота от имени администратора разрешён."
-		)
-		IsPassword = True
-
-	if not IsPassword and User.has_permissions("base_access"):
-		User.set_property("post", Message.text)
-		Bot.send_message(
+		Bot.send_message(chat_id = User.id, text = "Описание задано.")
+		Bot.send_photo(
 			chat_id = User.id,
-			text = "Выберите соотношение сторон иллюстрации.",
-			reply_markup = InlineKeyboards.select_ration()
+			photo = types.InputFile(Options.image_path),
+			caption = Options.prompt or "Настройте вашу генерацию:",
+			reply_markup = InlineKeyboards.kling_options(User)
 		)
 
-	elif not IsPassword: AccessAlert(Message.chat.id, Bot)
+		User.set_expected_type(None)
+
+	else:
+		IsPassword = False
+
+		if Message.text == Settings["password"]:
+			User.add_permissions(["base_access"])
+			Bot.send_message(
+				chat_id = Message.chat.id,
+				text = "Доступ к функциям бота разрешён."
+			)
+			IsPassword = True
+
+		if Message.text == Settings["admin_password"]:
+			User.add_permissions(["admin", "base_access"])
+			Bot.send_message(
+				chat_id = Message.chat.id,
+				text = "Доступ к функциям бота от имени администратора разрешён."
+			)
+			IsPassword = True
+
+		if not IsPassword and User.has_permissions("base_access"):
+			User.set_property("post", Message.text)
+			Bot.send_message(
+				chat_id = User.id,
+				text = "Выберите соотношение сторон иллюстрации.",
+				reply_markup = InlineKeyboards.select_ratio()
+			)
+
+	if not User.has_permissions("base_access"): AccessAlert(Message.chat.id, Bot)
 	
 @Bot.callback_query_handler(lambda Call: Call.data.startswith("ratio"))
 def CallbackQuery(Call: types.CallbackQuery):
@@ -253,9 +259,121 @@ def CallbackQuery(Call: types.CallbackQuery):
 
 	if User.has_permissions("base_access"):
 		User.set_property("ratio", Call.data.split("_")[-1])
-		QueueObject.append(User)
+
+		if Kling.is_enabled and Kling.coins_count > MIN_COINS:
+			Bot.send_message(
+				chat_id = User.id,
+				text = "Выберите желаемый способ генерации иллюстраций.",
+				reply_markup = InlineKeyboards.image_generators()
+			)
+
+		else: QueueObject.append(User)
 
 	else: AccessAlert(User.id, Bot)
+
+@Bot.callback_query_handler(lambda Call: Call.data.startswith("image_generator"))
+def CallbackQuery(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+	Bot.delete_message(User.id, Call.message.id)
+	Value = Call.data.split("_")[-1]
+
+	if not User.has_permissions("base_access"): 
+		AccessAlert(User.id, Bot)
+		return
+	
+	if Value == "kling": QueueObject.append_kling(User)
+	else: QueueObject.append_sdxl(User)
+
+@Bot.callback_query_handler(lambda Call: Call.data == "kling_yes")
+def CallbackQuery(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+	Bot.delete_message(User.id, Call.message.id)
+
+	if not User.has_permissions("base_access"): 
+		AccessAlert(User.id, Bot)
+		return
+	
+	Options = KlingOptions(User)
+	
+	Bot.send_photo(
+		chat_id = User.id,
+		photo = types.InputFile(Options.image_path),
+		caption = Options.prompt or "Настройте вашу генерацию:",
+		reply_markup = InlineKeyboards.kling_options(User)
+	)
+
+@Bot.callback_query_handler(lambda Call: Call.data == "kling_no")
+def CallbackQuery(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+	Bot.delete_message(User.id, Call.message.id)
+
+	if not User.has_permissions("base_access"): 
+		AccessAlert(User.id, Bot)
+		return
+	
+	SendPostWithImage(Bot, User, KlingOptions(User).image_path)
+	User.set_property("post", None)
+	RemoveDirectoryContent(f"Data/Buffer/{User.id}")
+
+@Bot.callback_query_handler(lambda Call: Call.data.startswith("kling_options_duration"))
+def CallbackQuery(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+
+	Value: bool = Call.data.split("_")[-1] == "10"
+	KlingOptions(User).set_extend(Value)
+	
+	Bot.edit_message_reply_markup(
+		chat_id = User.id,
+		message_id = Call.message.id,
+		reply_markup = InlineKeyboards.kling_options(User)
+	)
+
+@Bot.callback_query_handler(lambda Call: Call.data.startswith("kling_options_prompt"))
+def CallbackQuery(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+	User.set_expected_type("prompt")
+	Bot.delete_message(Call.message.chat.id, Call.message.id)
+	Bot.send_message(User.id, "Отправьте описание запроса:")
+
+@Bot.callback_query_handler(lambda Call: Call.data.startswith("kling_options_version"))
+def CallbackQuery(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+
+	Value: str = Call.data.split("_")[-1]
+	Value = "1." + Value[-1]
+	KlingOptions(User).select_model(Value)
+	
+	Bot.edit_message_reply_markup(
+		chat_id = User.id,
+		message_id = Call.message.id,
+		reply_markup = InlineKeyboards.kling_options(User)
+	)
+
+@Bot.callback_query_handler(lambda Call: Call.data == "kling_generate")
+def CallbackQuery(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+	Bot.delete_message(User.id, Call.message.id)
+
+	if not User.has_permissions("base_access"): 
+		AccessAlert(User.id, Bot)
+		return
+	
+	Options = KlingOptions(User)
+
+	Notification = Bot.send_message(User.id, "<i>Видео генерируется. Это займёт от 2 до 10 минут...</i>", parse_mode = "HTML")
+	
+	Link = Kling.generate_video(
+		image_path = Options.image_path,
+		prompt = Options.prompt,
+		extend = Options.extend,
+		model = Options.model
+	)
+	
+	Master.safely_delete_messages(User.id, Notification.id)
+	SendPostWithVideo(Bot, User, Link)
+	Options.drop()
+	User.set_property("post", None)
+	RemoveDirectoryContent(f"Data/Buffer/{User.id}")
 
 @Bot.callback_query_handler(func = lambda Query: True)
 def CallbackQuery(Query: types.CallbackQuery):

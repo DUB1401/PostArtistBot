@@ -1,12 +1,16 @@
-from Source.Core.ImageGenerator import ImageGenerator
+
 
 from dublib.Methods.Filesystem import RemoveDirectoryContent
-from dublib.TelebotUtils import UserData
+from dublib.TelebotUtils import TeleMaster, UserData
 
+from typing import TYPE_CHECKING
 from threading import Thread
-from time import sleep
 
 from telebot import TeleBot, types
+
+if TYPE_CHECKING:
+	from Source.Core.ImageGenerator import ImageGenerator
+	from Source.Core.Kling import KlingAdapter
 
 #==========================================================================================#
 # >>>>> ОСНОВНОЙ КЛАСС <<<<< #
@@ -19,13 +23,52 @@ class Queue:
 	# >>>>> ПРИВАТНЫЕ МЕТОДЫ <<<<< #
 	#==========================================================================================#
 
-	def __QueueProcessor(self):
-		"""Обрабатывает очередь запросов."""
+	def __QueueProcessorKling(self):
+		"""Обрабатывает очередь запросов к **Kling AI**."""
 
 		while True:
 
-			if len(self.__QueueData):
-				User: UserData = self.__QueueData[0]
+			if len(self.__QueueKling):
+				User: UserData = self.__QueueKling[0]
+				Index = 0
+				
+				try:
+					Message = self.__Bot.send_message(chat_id = User.id, text = "Идёт генерация иллюстраций...")
+
+					RequestText = User.get_property("post")
+					Ratio = {
+						"horizontal": "16:9",
+						"square": "1:1",
+						"vertical": "9:16"
+					}[User.get_property("ratio")]
+
+					ImagesLinks = self.__GeneratorKling.generate_images(User.id, RequestText, Ratio)
+					self.__TeleMaster.safely_delete_messages(User.id, Message.id)
+
+					for Index in range(len(ImagesLinks)):
+						self.__Bot.send_photo(
+							chat_id = User.id,
+							photo = ImagesLinks[Index],
+							caption = f"Используйте команду /" + self.__ImagesSelectors[Index] + " для выбора данной иллюстрации."
+						)
+					
+					self.__QueueKling.pop(0)
+					self.__Bot.send_message(
+						chat_id = Message.chat.id,
+						text = "Если вам не понравился ни один из предложенных вариантов, воспользуйтесь командой /retry для генерации ещё четырёх иллюстраций."
+					)
+							
+				except Exception as ExceptionData: print(ExceptionData)
+
+			else: break
+
+	def __QueueProcessorSDXL(self):
+		"""Обрабатывает очередь запросов к **SDXL**."""
+
+		while True:
+
+			if len(self.__QueueSDXL):
+				User: UserData = self.__QueueSDXL[0]
 				Index = 0
 				Message = None
 				
@@ -43,7 +86,7 @@ class Queue:
 							text = "Идёт генерация иллюстраций...\n\nПрогресс: " + str(Index + 1) + " / 4"
 						)
 						
-						Result = self.__ImageGenerator.generate_image_by_gradio(User, RequestText, str(Index))
+						Result = self.__GeneratorSDXL.generate_image_by_gradio(User, RequestText, str(Index))
 
 						if Result:
 							Media = [
@@ -61,7 +104,7 @@ class Queue:
 							Index += 1
 
 							if Index == 4: 
-								self.__QueueData.pop(0)
+								self.__QueueSDXL.pop(0)
 								self.__Bot.send_message(
 									chat_id = Message.chat.id,
 									text = "Если вам не понравился ни один из предложенных вариантов, воспользуйтесь командой /retry для генерации ещё четырёх иллюстраций."
@@ -73,7 +116,7 @@ class Queue:
 								text = "<i>Достигнут лимит запросов. Попробуйте продолжить позже.</i>",
 								parse_mode = "HTML"
 							)
-							self.__QueueData.pop(0)
+							self.__QueueSDXL.pop(0)
 							
 				except Exception as ExceptionData: print(ExceptionData)
 
@@ -86,36 +129,60 @@ class Queue:
 	# >>>>> ПУБЛИЧНЫЕ МЕТОДЫ <<<<< #
 	#==========================================================================================#
 
-	def __init__(self, settings: dict, bot: TeleBot):
+	def __init__(self, bot: TeleBot, sdxl_generator: "ImageGenerator", kling_generator: "KlingAdapter"):
 		"""
 		Оператор очереди генерации иллюстраций.
 
-		:param settings: Словарь глобальных настроек.
-		:type settings: dict
 		:param bot: Бот Telegram.
 		:type bot: TeleBot
+		:param sdxl_generator: Генератор **SDXL**.
+		:type sdxl_generator: ImageGenerator
+		:param kling_generator: Генератор **Kling AI**.
+		:type kling_generator: KlingAdapter
 		"""
 
-		self.__Settings = settings.copy()
 		self.__Bot = bot
+		self.__GeneratorSDXL = sdxl_generator
+		self.__GeneratorKling = kling_generator
 
-		self.__QueueData = list()
-		self.__ImageGenerator = ImageGenerator(self.__Settings)
-		self.__ProcessorThread = None
 		self.__ImagesSelectors = ("first", "second", "third", "fourth")
+		self.__TeleMaster = TeleMaster(self.__Bot)
+
+		self.__QueueSDXL = list()
+		self.__QueueKling = list()
+
+		self.__ProcessorThreadSDXL = None
+		self.__ProcessorThreadKling = None
 		
 		self.run()
 
-	def append(self, user: UserData):
+	def append_kling(self, user: UserData):
 		"""
-		Добавляет пользователя в очередь для генерации иллюстраций.
+		Добавляет пользователя в очередь **Kling AI** для генерации иллюстраций.
 
 		:param user: Данные пользователя.
 		:type user: UserData
 		"""
 		
-		IsFirst = not bool(len(self.__QueueData))
-		self.__QueueData.append(user)
+		IsFirst = not self.__QueueKling
+		self.__QueueKling.append(user)
+		self.run()
+
+		if not IsFirst: self.__Bot.send_message(
+			chat_id = user.id,
+			text = "В данный момент кто-то уже генерирует иллюстрацию. Ваш запрос помещён в очередь и будет обработан сразу же, как появится возможность."
+		)
+
+	def append_sdxl(self, user: UserData):
+		"""
+		Добавляет пользователя в очередь **SDXL** для генерации иллюстраций.
+
+		:param user: Данные пользователя.
+		:type user: UserData
+		"""
+		
+		IsFirst = not self.__QueueSDXL
+		self.__QueueSDXL.append(user)
 		self.run()
 
 		if not IsFirst: self.__Bot.send_message(
@@ -124,8 +191,12 @@ class Queue:
 		)
 
 	def run(self):
-		"""Запускает поток обработки очереди запросов."""
+		"""Запускает потоки обработки очереди запросов."""
 
-		if self.__ProcessorThread == None or not self.__ProcessorThread.is_alive():
-			self.__ProcessorThread = Thread(target = self.__QueueProcessor)
-			self.__ProcessorThread.start()
+		if self.__ProcessorThreadSDXL == None or not self.__ProcessorThreadSDXL.is_alive():
+			self.__ProcessorThreadSDXL = Thread(target = self.__QueueProcessorSDXL)
+			self.__ProcessorThreadSDXL.start()
+
+		if self.__ProcessorThreadKling == None or not self.__ProcessorThreadKling.is_alive():
+			self.__ProcessorThreadKling = Thread(target = self.__QueueProcessorKling)
+			self.__ProcessorThreadKling.start()

@@ -17,7 +17,12 @@ class ImageGenerator:
 	"""Генератор иллюстраций."""
 
 	def __init__(self, settings: dict):
-		"""Генератор иллюстраций."""
+		"""
+		Генератор иллюстраций.
+
+		:param settings: Словарь настроек **SDXL**.
+		:type settings: dict
+		"""
 
 		self.__Client = Client(settings["hf_space"], hf_token = settings["hf_token"])
 		self.__Client.output_dir = "Temp"
@@ -83,7 +88,7 @@ class ImageGenerator:
 			"blurry",
 			"amputation"
 		)
-		if self.__Settings["sdxl_flash"]["negative"]: Negative = self.__Settings["sdxl_flash"]["negative"]
+		if self.__Settings["negative"]: Negative = self.__Settings["negative"]
 		Negative = ", ".join(Negative)
 		Width, Height = self.__Settings["ratio"][user.get_property("ratio")]
 
@@ -98,7 +103,7 @@ class ImageGenerator:
 					width = Width,
 					height = Height,
 					guidance_scale = 3,
-					num_inference_steps = self.__Settings["sdxl_flash"]["steps"],
+					num_inference_steps = self.__Settings["steps"],
 					randomize_seed = True,
 					api_name = "/run"
 				)

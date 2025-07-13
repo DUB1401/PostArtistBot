@@ -1,7 +1,8 @@
+git+https://github.com/yihong0618/klingCreator
 pyTelegramBotAPI
 deep-translator
 huggingface_hub
 gradio-client
-dublib==0.19.1
+dublib==0.21.0
 Pillow
-g4f==0.5.3.1
+g4f==0.5.7.0
