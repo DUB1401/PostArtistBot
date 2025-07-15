@@ -4,3 +4,5 @@ __pycache__
 # Users data.
 Data
 Temp
+# TeleCache.
+.telecache.json

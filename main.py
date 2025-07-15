@@ -5,9 +5,9 @@ from Source.UI import InlineKeyboards
 from Source.Core.Queue import Queue
 
 from dublib.Methods.Filesystem import MakeRootDirectories, RemoveDirectoryContent
+from dublib.TelebotUtils import TeleCache, TeleMaster, UsersManager
 from dublib.Methods.System import CheckPythonMinimalVersion, Clear
 from dublib.Methods.Filesystem import ReadJSON, WriteJSON
-from dublib.TelebotUtils import TeleMaster, UsersManager
 
 from time import sleep
 import os
@@ -33,6 +33,8 @@ Bot = telebot.TeleBot(Settings["bot_token"])
 Master = TeleMaster(Bot)
 
 UsersManagerObject = UsersManager("Data/Users")
+Cacher = TeleCache()
+Cacher.set_options(Bot, None)
 
 GeneratorSDXL = ImageGenerator(Settings["sdxl_flash"])
 Kling = KlingAdapter(Settings["kling_ai"]["cookies"])
@@ -95,13 +97,34 @@ def Command(Message: types.Message):
 
 	else: AccessAlert(Message.chat.id, Bot)
 
+@Bot.message_handler(commands = ["balance"])
+def Command(Message: types.Message):
+	User = UsersManagerObject.auth(Message.from_user)
+
+	if User.has_permissions("admin"):
+		if Kling.is_enabled:
+			Bot.send_message(
+				chat_id = Message.chat.id,
+				text = f"Для Kling AI монет доступно: {Kling.coins_count} 🔥",
+				reply_markup = InlineKeyboards.close()
+			)
+
+		else:
+			Bot.send_message(
+				chat_id = Message.chat.id,
+				text = "Невозможно получить лимиты. Нет доступа.",
+				reply_markup = InlineKeyboards.close()
+			)
+
+	else: AccessAlert(Message.chat.id, Bot)
+
 @Bot.message_handler(commands = ["clear"])
 def Command(Message: types.Message):
 	User = UsersManagerObject.auth(Message.from_user)
 
 	if User.has_permissions("base_access"):
 		User.set_property("post", None)
-		if os.path.exists(f"Data/{Message.from_user.id}"): RemoveDirectoryContent(f"Data/{Message.from_user.id}")
+		if os.path.exists(f"Data/Buffer/{Message.from_user.id}"): RemoveDirectoryContent(f"Data/Buffer/{Message.from_user.id}")
 		Bot.send_message(
 			chat_id = Message.chat.id,
 			text = "Данные сессии очищены.",
@@ -198,10 +221,31 @@ def Command(Message: types.Message):
 	User.set_property("description", None)
 
 	if User.has_permissions("base_access"):
-		Bot.send_message(
-			chat_id = Message.chat.id,
-			text = "Я бот для генерации иллюстраций, контекстно совместимых с предоставленным текстом, и создан, чтобы помочь вам вести личный блог или канал. Пришлите мне текст для начала работы."
-		)
+		AnimationPath = "Data/start.gif"
+		Text = "Я бот для генерации иллюстраций, контекстно совместимых с предоставленным текстом, и создан, чтобы помочь вам вести личный блог или канал. Пришлите мне текст для начала работы."
+		
+		# В будущем использовать проверку из dublib 0.21.1.
+		if os.path.exists(AnimationPath):
+			StartAnimation = None
+			
+			try:
+				StartAnimation = Cacher.get_real_cached_file(AnimationPath, types.InputMediaAnimation)
+
+			except:
+				Cacher.set_options(Bot, User.id)
+				StartAnimation = Cacher.get_real_cached_file(AnimationPath, types.InputMediaAnimation)
+
+			Bot.send_animation(
+				chat_id = Message.chat.id,
+				animation = StartAnimation.file_id,
+				caption = Text
+			)
+
+		else:
+			Bot.send_message(
+				chat_id = Message.chat.id,
+				text = Text
+			)
 
 	else: AccessAlert(Message.chat.id, Bot)
 
@@ -283,6 +327,11 @@ def CallbackQuery(Call: types.CallbackQuery):
 	
 	if Value == "kling": QueueObject.append_kling(User)
 	else: QueueObject.append_sdxl(User)
+
+@Bot.callback_query_handler(lambda Call: Call.data == "delete_message")
+def CallbackQuery(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+	TeleMaster(Bot).safely_delete_messages(User.id, Call.message.id)
 
 @Bot.callback_query_handler(lambda Call: Call.data == "kling_yes")
 def CallbackQuery(Call: types.CallbackQuery):

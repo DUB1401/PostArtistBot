@@ -67,7 +67,7 @@ class ImageGenerator:
 		Try = 0
 		text = text.split(" ")[:75]
 		text = " ".join(text)
-		if not os.path.exists(f"Data/{user.id}"): os.makedirs(f"Data/{user.id}")
+		if not os.path.exists(f"Data/Buffer/{user.id}"): os.makedirs(f"Data/Buffer/{user.id}")
 		text = GoogleTranslator(source = "auto", target = "en").translate(text)
 		text = text.strip()
 

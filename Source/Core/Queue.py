@@ -31,9 +31,10 @@ class Queue:
 			if len(self.__QueueKling):
 				User: UserData = self.__QueueKling[0]
 				Index = 0
-				
+				Message = None
+
 				try:
-					Message = self.__Bot.send_message(chat_id = User.id, text = "Идёт генерация иллюстраций...")
+					Message = self.__Bot.send_message(chat_id = User.id, text = "<i>Идёт генерация иллюстраций...</i>", parse_mode = "HTML")
 
 					RequestText = User.get_property("post")
 					Ratio = {
@@ -58,7 +59,13 @@ class Queue:
 						text = "Если вам не понравился ни один из предложенных вариантов, воспользуйтесь командой /retry для генерации ещё четырёх иллюстраций."
 					)
 							
-				except Exception as ExceptionData: print(ExceptionData)
+				except Exception as ExceptionData:
+					if Message: self.__TeleMaster.safely_delete_messages(User.id, Message.id)
+					self.__QueueKling.pop(0)
+					self.__Bot.send_message(
+						chat_id = Message.chat.id,
+						text = f"Во время генерации могли возникнуть проблемы. Свяжитесь с разработчиком.\n\nОшибка: {ExceptionData}"
+					)
 
 			else: break
 
@@ -118,7 +125,13 @@ class Queue:
 							)
 							self.__QueueSDXL.pop(0)
 							
-				except Exception as ExceptionData: print(ExceptionData)
+				except Exception as ExceptionData:
+					if Message: self.__TeleMaster.safely_delete_messages(User.id, Message.id)
+					self.__QueueSDXL.pop(0)
+					self.__Bot.send_message(
+						chat_id = Message.chat.id,
+						text = f"Во время генерации могли возникнуть проблемы. Свяжитесь с разработчиком.\n\nОшибка: {ExceptionData}"
+					)
 
 				self.__Bot.delete_message(User.id, Message.message_id)
 				RemoveDirectoryContent("Temp")

@@ -59,3 +59,12 @@ class InlineKeyboards:
 		Menu.add(Generate, row_width = 1)
 
 		return Menu
+	
+	def close() -> types.InlineKeyboardMarkup:
+		"""Генерирует Inline-клавиатуру: удаление сообщения."""
+
+		Menu = types.InlineKeyboardMarkup()
+		Close = types.InlineKeyboardButton("Закрыть", callback_data = "delete_message")
+		Menu.add(Close)
+
+		return Menu

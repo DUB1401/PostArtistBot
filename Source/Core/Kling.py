@@ -246,8 +246,6 @@ class KlingAdapter:
 		:rtype: tuple[URL]
 		"""
 
-		
-		# return self.__ImageGenerator.fetch_image_url(284369320303945, self.__ImageGenerator.session)
 		ImagesLinks = self.__ImageGenerator.get_images(prompt, ratio = ratio, count = count)
 		for Index in range(len(ImagesLinks)): self.__DownloadImage(ImagesLinks[Index], user_id, Index)
 
