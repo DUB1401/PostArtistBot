@@ -3,6 +3,6 @@ pyTelegramBotAPI
 deep-translator
 huggingface_hub
 gradio-client
-dublib==0.21.0
+dublib==0.22.0
 Pillow
-g4f==0.5.7.0
+g4f==0.5.7.3

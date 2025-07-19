@@ -34,7 +34,7 @@ Master = TeleMaster(Bot)
 
 UsersManagerObject = UsersManager("Data/Users")
 Cacher = TeleCache()
-Cacher.set_options(Bot, None)
+Cacher.set_bot(Bot)
 
 GeneratorSDXL = ImageGenerator(Settings["sdxl_flash"])
 Kling = KlingAdapter(Settings["kling_ai"]["cookies"])
@@ -224,28 +224,23 @@ def Command(Message: types.Message):
 		AnimationPath = "Data/start.gif"
 		Text = "Я бот для генерации иллюстраций, контекстно совместимых с предоставленным текстом, и создан, чтобы помочь вам вести личный блог или канал. Пришлите мне текст для начала работы."
 		
-		# В будущем использовать проверку из dublib 0.21.1.
 		if os.path.exists(AnimationPath):
 			StartAnimation = None
+
+			if not Cacher.has_real_cache(AnimationPath):
+				Cacher.set_chat_id(User.id)
+				StartAnimation = Cacher.cache_real_file(AnimationPath, types.InputMediaAnimation)
 			
-			try:
+			else: 
 				StartAnimation = Cacher.get_real_cached_file(AnimationPath, types.InputMediaAnimation)
-
-			except:
-				Cacher.set_options(Bot, User.id)
-				StartAnimation = Cacher.get_real_cached_file(AnimationPath, types.InputMediaAnimation)
-
+			
 			Bot.send_animation(
 				chat_id = Message.chat.id,
 				animation = StartAnimation.file_id,
 				caption = Text
 			)
 
-		else:
-			Bot.send_message(
-				chat_id = Message.chat.id,
-				text = Text
-			)
+		else: Bot.send_message(chat_id = Message.chat.id, text = Text)
 
 	else: AccessAlert(Message.chat.id, Bot)
 
