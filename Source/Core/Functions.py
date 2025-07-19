@@ -2,6 +2,7 @@ from dublib.TelebotUtils.Users import UserData
 
 from telebot import TeleBot, types
 from os import PathLike
+import urllib.request
 
 def AccessAlert(chat_id: int, bot: TeleBot):
 	"""
@@ -60,10 +61,24 @@ def SendPostWithVideo(bot: TeleBot, user: UserData, video_url: str):
 	:type video_url: str
 	"""
 
+	VideoPath = f"Data/Buffer/{user.id}/video.mp4"
+
+	try: 
+		urllib.request.urlretrieve(video_url, VideoPath)
+		
+	except Exception as ExceptionData:
+		print(ExceptionData)
+		bot.send_message(
+			chat_id = user.id,
+			text = "<i>Не удалось скачать видео.</i>",
+			parse_mode = "HTML"
+		)
+		return
+
 	try:
 		bot.send_video(
 			chat_id = user.id,
-			video = video_url,
+			video = types.InputFile(VideoPath),
 			caption = user.get_property("post"),
 			parse_mode = "HTML"
 		)
@@ -75,5 +90,5 @@ def SendPostWithVideo(bot: TeleBot, user: UserData, video_url: str):
 			text = "<i>Не удалось прикрепить видео к посту, так как превышен лимит на длину текста.</i>",
 			parse_mode = "HTML"
 		)
-		bot.send_video(chat_id = user.id, video = video_url)
+		bot.send_video(chat_id = user.id, video = types.InputFile(VideoPath))
 		bot.send_message(chat_id = user.id, text = user.get_property("post"), parse_mode = "HTML")

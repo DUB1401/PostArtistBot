@@ -1,4 +1,4 @@
-
+from Source.UI import InlineKeyboards
 
 from dublib.Methods.Filesystem import RemoveDirectoryContent
 from dublib.TelebotUtils import TeleMaster, UserData
@@ -30,6 +30,8 @@ class Queue:
 
 			if len(self.__QueueKling):
 				User: UserData = self.__QueueKling[0]
+				User.set_property("last_provider", "kling")
+				User.set_property("last_operation", "images")
 				Index = 0
 				Message = None
 
@@ -55,8 +57,9 @@ class Queue:
 					
 					self.__QueueKling.pop(0)
 					self.__Bot.send_message(
-						chat_id = Message.chat.id,
-						text = "Если вам не понравился ни один из предложенных вариантов, воспользуйтесь командой /retry для генерации ещё четырёх иллюстраций."
+						chat_id = User.id,
+						text = "Вам понравился результат?",
+						reply_markup = InlineKeyboards.retry()
 					)
 							
 				except Exception as ExceptionData:
@@ -76,6 +79,8 @@ class Queue:
 
 			if len(self.__QueueSDXL):
 				User: UserData = self.__QueueSDXL[0]
+				User.set_property("last_provider", "sdxl")
+				User.set_property("last_operation", "images")
 				Index = 0
 				Message = None
 				
@@ -113,8 +118,9 @@ class Queue:
 							if Index == 4: 
 								self.__QueueSDXL.pop(0)
 								self.__Bot.send_message(
-									chat_id = Message.chat.id,
-									text = "Если вам не понравился ни один из предложенных вариантов, воспользуйтесь командой /retry для генерации ещё четырёх иллюстраций."
+									chat_id = User.id,
+									text = "Вам понравился результат?",
+									reply_markup = InlineKeyboards.retry()
 								)
 
 						else:

@@ -68,3 +68,13 @@ class InlineKeyboards:
 		Menu.add(Close)
 
 		return Menu
+	
+	def retry() -> types.InlineKeyboardMarkup:
+		"""Генерирует Inline-клавиатуру: повтор генерации."""
+
+		Menu = types.InlineKeyboardMarkup()
+		Retry = types.InlineKeyboardButton("Перегенерировать", callback_data = "retry")
+		Yes = types.InlineKeyboardButton("Да", callback_data = "delete_message")
+		Menu.add(Retry, Yes, row_width = 1)
+
+		return Menu

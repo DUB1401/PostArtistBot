@@ -38,7 +38,7 @@ Cacher.set_bot(Bot)
 
 GeneratorSDXL = ImageGenerator(Settings["sdxl_flash"])
 Kling = KlingAdapter(Settings["kling_ai"]["cookies"])
-QueueObject = Queue(Bot,GeneratorSDXL, Kling)
+QueueObject = Queue(Bot, GeneratorSDXL, Kling)
 
 MIN_COINS = Settings["kling_ai"]["min_coins"]
 
@@ -166,24 +166,6 @@ def Command(Message: types.Message):
 
 	else: AccessAlert(Message.chat.id, Bot)
 
-@Bot.message_handler(commands = ["retry"])
-def Command(Message: types.Message):
-	User = UsersManagerObject.auth(Message.from_user)
-
-	if User.has_permissions("base_access"):
-
-		if User.get_property("post"):
-			User.set_property("description", None)
-			QueueObject.append(Message.chat.id, User)
-
-		else:
-			Bot.send_message(
-				chat_id = Message.chat.id,
-				text = "Вы не отправили текст поста для генерации иллюстрации.",
-			)
-
-	else: AccessAlert(Message.chat.id, Bot)
-
 @Bot.message_handler(commands = ["password"])
 def Command(Message: types.Message):
 	User = UsersManagerObject.auth(Message.from_user)
@@ -250,6 +232,7 @@ def Post(Message: types.Message):
 
 	if User.expected_type == "prompt":
 		Options = KlingOptions(User)
+		Options.drop()
 		Options.set_prompt(Message.text)
 
 		Bot.send_message(chat_id = User.id, text = "Описание задано.")
@@ -306,7 +289,7 @@ def CallbackQuery(Call: types.CallbackQuery):
 				reply_markup = InlineKeyboards.image_generators()
 			)
 
-		else: QueueObject.append(User)
+		else: QueueObject.append_sdxl(User)
 
 	else: AccessAlert(User.id, Bot)
 
@@ -329,9 +312,9 @@ def CallbackQuery(Call: types.CallbackQuery):
 	TeleMaster(Bot).safely_delete_messages(User.id, Call.message.id)
 
 @Bot.callback_query_handler(lambda Call: Call.data == "kling_yes")
-def CallbackQuery(Call: types.CallbackQuery):
+def CallbackQuery_KlingYes(Call: types.CallbackQuery):
 	User = UsersManagerObject.auth(Call.from_user)
-	Bot.delete_message(User.id, Call.message.id)
+	Master.safely_delete_messages(User.id, Call.message.id)
 
 	if not User.has_permissions("base_access"): 
 		AccessAlert(User.id, Bot)
@@ -394,30 +377,54 @@ def CallbackQuery(Call: types.CallbackQuery):
 	)
 
 @Bot.callback_query_handler(lambda Call: Call.data == "kling_generate")
-def CallbackQuery(Call: types.CallbackQuery):
+def CallbackQuery_KlingGenerate(Call: types.CallbackQuery):
 	User = UsersManagerObject.auth(Call.from_user)
-	Bot.delete_message(User.id, Call.message.id)
+	Master.safely_delete_messages(User.id, Call.message.id)
 
 	if not User.has_permissions("base_access"): 
 		AccessAlert(User.id, Bot)
 		return
 	
 	Options = KlingOptions(User)
+	User.set_property("last_provider", "kling")
+	User.set_property("last_operation", "video")
 
-	Notification = Bot.send_message(User.id, "<i>Видео генерируется. Это займёт от 2 до 10 минут...</i>", parse_mode = "HTML")
-	
+	Notification = Bot.send_message(User.id, "<i>Видео генерируется. Это займёт от 2 до 5 минут...</i>", parse_mode = "HTML")
+
 	Link = Kling.generate_video(
 		image_path = Options.image_path,
 		prompt = Options.prompt,
 		extend = Options.extend,
 		model = Options.model
 	)
-	
+
 	Master.safely_delete_messages(User.id, Notification.id)
 	SendPostWithVideo(Bot, User, Link)
-	Options.drop()
-	User.set_property("post", None)
-	RemoveDirectoryContent(f"Data/Buffer/{User.id}")
+
+	Bot.send_message(
+		chat_id = User.id,
+		text = "Вам понравился результат?",
+		reply_markup = InlineKeyboards.retry()
+	)
+
+@Bot.callback_query_handler(lambda Call: Call.data == "retry")
+def CallbackQuery(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+
+	if not User.has_permissions("base_access"):
+		AccessAlert(User.id, Bot)
+		return
+	
+	LastOperation = User.get_property("last_operation")
+	Master.safely_delete_messages(User.id, Call.message.id)
+
+	if LastOperation == "images":
+		LastProvider = User.get_property("last_provider")
+
+		if LastProvider == "sdxl": QueueObject.append_sdxl(User)
+		elif LastProvider == "kling": QueueObject.append_kling(User)
+
+	elif LastOperation == "video": CallbackQuery_KlingYes(Call)
 
 @Bot.callback_query_handler(func = lambda Query: True)
 def CallbackQuery(Query: types.CallbackQuery):
