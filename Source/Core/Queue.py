@@ -47,12 +47,13 @@ class Queue:
 
 					ImagesLinks = self.__GeneratorKling.generate_images(User.id, RequestText, Ratio)
 					self.__TeleMaster.safely_delete_messages(User.id, Message.id)
+					if not ImagesLinks: raise Exception("The task generation parameters are invalid. Change prompt. Used credits have been refunded.")
 
 					for Index in range(len(ImagesLinks)):
 						self.__Bot.send_photo(
 							chat_id = User.id,
 							photo = ImagesLinks[Index],
-							caption = f"Используйте команду /" + self.__ImagesSelectors[Index] + " для выбора данной иллюстрации."
+							caption = f"Используйте команду /" + self.__ImagesSelectors[Index] + " для генерации видео из данной иллюстрации."
 						)
 					
 					self.__QueueKling.pop(0)
@@ -67,7 +68,7 @@ class Queue:
 					self.__QueueKling.pop(0)
 					self.__Bot.send_message(
 						chat_id = Message.chat.id,
-						text = f"Во время генерации могли возникнуть проблемы. Свяжитесь с разработчиком.\n\nОшибка: {ExceptionData}"
+						text = f"Во время генерации произошла ошибка:\n\n{ExceptionData}"
 					)
 
 			else: break
@@ -86,9 +87,9 @@ class Queue:
 				
 				try:
 					Message = self.__Bot.send_message(
-						chat_id = User.id,
-						text = "Инициализация выделенного ядра нейросети..."
-					)
+							chat_id = User.id,
+							text = "Идёт генерация иллюстраций...\n\nПрогресс: 0 / 4"
+						)
 					
 					while Index < 4:
 						RequestText = User.get_property("post")

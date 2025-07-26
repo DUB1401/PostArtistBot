@@ -44,19 +44,29 @@ class InlineKeyboards:
 		Options = KlingOptions(user)
 
 		DurationStatus = ("", "✅ ") if Options.extend else ("✅ ", "")
-		ModelVersion = ("", "✅ ") if Options.model == "1.6" else ("✅ ", "")
-
+		ModelIndex = ["1.0", "1.6", "2.1"].index(Options.model)
+		ModelVersion = ["", "", ""]
+		ModelVersion[ModelIndex] = "✅ "
+		
 		Menu = types.InlineKeyboardMarkup()
-		Prompt = types.InlineKeyboardButton("📝 Задать описание", callback_data = "kling_options_prompt")
+
+		Prompt = types.InlineKeyboardButton("📝 Изменить описание", callback_data = "kling_options_prompt")
 		Menu.add(Prompt, row_width = 1)
+
 		FiveSeconds = types.InlineKeyboardButton(DurationStatus[0] + "5 сек.", callback_data = "kling_options_duration_5")
 		TenSeconds = types.InlineKeyboardButton(DurationStatus[1] + "10 сек.", callback_data = "kling_options_duration_10")
 		Menu.add(FiveSeconds, TenSeconds, row_width = 2)
+
 		OldVersion = types.InlineKeyboardButton(ModelVersion[0] + "v1.0", callback_data = "kling_options_version_10")
 		MidleVersion = types.InlineKeyboardButton(ModelVersion[1] + "v1.6", callback_data = "kling_options_version_16")
-		Menu.add(OldVersion, MidleVersion, row_width = 2)
+		NewVersion = types.InlineKeyboardButton(ModelVersion[2] + "v2.1", callback_data = "kling_options_version_21")
+		Menu.add(OldVersion, MidleVersion, NewVersion, row_width = 3)
+
 		Generate = types.InlineKeyboardButton("🤖 Сгенерировать", callback_data = "kling_generate")
 		Menu.add(Generate, row_width = 1)
+
+		Back = types.InlineKeyboardButton("◀️ Назад", callback_data = "delete_message")
+		Menu.add(Back, row_width = 1)
 
 		return Menu
 	
@@ -76,5 +86,16 @@ class InlineKeyboards:
 		Retry = types.InlineKeyboardButton("Перегенерировать", callback_data = "retry")
 		Yes = types.InlineKeyboardButton("Да", callback_data = "delete_message")
 		Menu.add(Retry, Yes, row_width = 1)
+
+		return Menu
+	
+	def media_types() -> types.InlineKeyboardMarkup:
+		"""Генерирует Inline-клавиатуру: типы медиа вложений."""
+
+		Menu = types.InlineKeyboardMarkup()
+		Images = types.InlineKeyboardButton("🏞️ Изображения (x4)", callback_data = "select_media_images")
+		Video = types.InlineKeyboardButton("🎬 Видео", callback_data = "select_media_video")
+		Cancel = types.InlineKeyboardButton("Отмена", callback_data = "delete_message")
+		Menu.add(Images, Video, Cancel, row_width = 1)
 
 		return Menu

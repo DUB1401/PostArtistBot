@@ -1,4 +1,4 @@
-from Source.Core.Functions import AccessAlert, SendPostWithImage, SendPostWithVideo
+from Source.Core.Functions import AccessAlert, SendKlingOptions, SendPostWithImage, SendPostWithVideo
 from Source.Core.Kling import KlingAdapter, KlingOptions
 from Source.Core.ImageGenerator import ImageGenerator
 from Source.UI import InlineKeyboards
@@ -7,7 +7,7 @@ from Source.Core.Queue import Queue
 from dublib.Methods.Filesystem import MakeRootDirectories, RemoveDirectoryContent
 from dublib.TelebotUtils import TeleCache, TeleMaster, UsersManager
 from dublib.Methods.System import CheckPythonMinimalVersion, Clear
-from dublib.Methods.Filesystem import ReadJSON, WriteJSON
+from dublib.Engine.Configurator import Config
 
 from time import sleep
 import os
@@ -23,7 +23,8 @@ Clear()
 CheckPythonMinimalVersion(3, 10)
 MakeRootDirectories(("Data/Buffer", "Data/Users", "Temp"))
 
-Settings = ReadJSON("Settings.json")
+Settings = Config("Settings.json")
+Settings.load()
 
 if Settings["proxy"]:
 	os.environ["HTTP_PROXY"] = Settings["proxy"]
@@ -37,13 +38,11 @@ Cacher = TeleCache()
 Cacher.set_bot(Bot)
 
 GeneratorSDXL = ImageGenerator(Settings["sdxl_flash"])
-Kling = KlingAdapter(Settings["kling_ai"]["cookies"])
+Kling = KlingAdapter(Settings)
 QueueObject = Queue(Bot, GeneratorSDXL, Kling)
 
-MIN_COINS = Settings["kling_ai"]["min_coins"]
-
 #==========================================================================================#
-# >>>>> ВЗАИМОДЕЙСТВИЕ С ПОЛЬЗОВАТЕЛЕМ <<<<< #
+# >>>>> ОБРАБОТКА КОМАНД <<<<< #
 #==========================================================================================#
 
 @Bot.message_handler(commands = ["about"])
@@ -103,18 +102,59 @@ def Command(Message: types.Message):
 
 	if User.has_permissions("admin"):
 		if Kling.is_enabled:
+			Text = (
+				f"Для <b>Kling AI</b> монет доступно: <b>{Kling.coins_count}</b> 🔥",
+				f"<i>Сервис перестанет быть доступен, если останется меньше <b>{Kling.min_coins}</b> монет.</i>"
+			)
 			Bot.send_message(
 				chat_id = Message.chat.id,
-				text = f"Для Kling AI монет доступно: {Kling.coins_count} 🔥",
+				text = "\n\n".join(Text),
+				parse_mode = "HTML",
 				reply_markup = InlineKeyboards.close()
 			)
 
 		else:
 			Bot.send_message(
 				chat_id = Message.chat.id,
-				text = "Невозможно получить лимиты. Нет доступа.",
+				text = "Невозможно получить количество доступных монет. <b>Kling AI</b> не подключен.",
+				parse_mode = "HTML",
 				reply_markup = InlineKeyboards.close()
 			)
+
+	else: AccessAlert(Message.chat.id, Bot)
+
+@Bot.message_handler(commands = ["kling"])
+def Command(Message: types.Message):
+	User = UsersManagerObject.auth(Message.from_user)
+
+	if User.has_permissions("admin"):
+		if Kling.is_enabled:
+			Bot.send_message(
+				chat_id = Message.chat.id,
+				text = f"<b>Kling AI</b> подключен и работает исправно.\n\nМонет доступно: {Kling.coins_count} 🔥",
+				parse_mode = "HTML"
+			)
+
+		else:
+			Text = (
+				"Сервис недоступен.\n",
+				"<b>Как исправить?</b>\n",
+				"1. Установите в ваш браузер данное <a href=\"https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm\">расширение</a>.",
+				"2. Перейдите на <a href=\"https://klingai.com/\">сайт</a> и авторизуйтесь.",
+				f"3. Проверьте наличие хотя бы <b>{Kling.min_coins}</b> монет.",
+				"4. Откройте расширение, в нижней панели всплывшего окна справа нажмите на <b>Export</b>.",
+				"5. Выберите <b>Header String</b>.",
+				"6. Отправьте мне скопированный автоматически текст."
+			)
+
+			Bot.send_message(
+				chat_id = Message.chat.id,
+				text = "\n".join(Text),
+				parse_mode = "HTML",
+				disable_web_page_preview = True
+			)
+
+			User.set_expected_type("kling_cookies")
 
 	else: AccessAlert(Message.chat.id, Bot)
 
@@ -146,14 +186,20 @@ def Command(Message: types.Message):
 
 	if User.has_permissions("base_access"):
 
-		if Kling.is_enabled and Kling.coins_count > MIN_COINS:
-			Bot.send_message(
-				chat_id = User.id,
-				text = f"Желаете сгенерировать короткое видео на основе этой иллюстрации при помощи <b>Kling AI</b>?\n\nМонет доступно: {Kling.coins_count} 🔥",
-				parse_mode = "HTML",
-				reply_markup = InlineKeyboards.kling_answer()
-			)
+		if Kling.is_enabled:
 			KlingOptions(User).select_image(Index)
+
+			if User.get_property("last_provider") == "sdxl":
+				Bot.send_message(
+					chat_id = User.id,
+					text = f"Желаете сгенерировать короткое видео на основе этой иллюстрации при помощи <b>Kling AI</b>?\n\nМонет доступно: {Kling.coins_count} 🔥",
+					parse_mode = "HTML",
+					reply_markup = InlineKeyboards.kling_answer()
+				)
+
+			else:
+				User.set_expected_type("prompt")
+				SendKlingOptions(Bot, User)
 
 		elif User.get_property("post"):
 			SendPostWithImage(Bot, User, f"Data/Buffer/{Message.from_user.id}/{Index}.jpg")
@@ -174,7 +220,6 @@ def Command(Message: types.Message):
 
 		try:
 			Settings["password"] = Message.text.split(" ")[1]
-			WriteJSON("Settings.json", Settings)
 
 		except IndexError:
 			Bot.send_message(
@@ -226,63 +271,106 @@ def Command(Message: types.Message):
 
 	else: AccessAlert(Message.chat.id, Bot)
 
+#==========================================================================================#
+# >>>>> ОБРАБОТКА ТЕКСТА <<<<< #
+#==========================================================================================#
+
 @Bot.message_handler(content_types = ["text"])
-def Post(Message: types.Message):
+def Text(Message: types.Message):
 	User = UsersManagerObject.auth(Message.from_user)
+	Options = KlingOptions(User)
+	IsPassword = False
 
-	if User.expected_type == "prompt":
-		Options = KlingOptions(User)
-		Options.drop()
-		Options.set_prompt(Message.text)
-
-		Bot.send_message(chat_id = User.id, text = "Описание задано.")
-		Bot.send_photo(
-			chat_id = User.id,
-			photo = types.InputFile(Options.image_path),
-			caption = Options.prompt or "Настройте вашу генерацию:",
-			reply_markup = InlineKeyboards.kling_options(User)
+	if Message.text == Settings["password"]:
+		User.add_permissions(["base_access"])
+		Bot.send_message(
+			chat_id = Message.chat.id,
+			text = "Доступ к функциям бота разрешён."
 		)
+		IsPassword = True
+		return
 
-		User.set_expected_type(None)
+	elif Message.text == Settings["admin_password"]:
+		User.add_permissions(["admin", "base_access"])
+		Bot.send_message(
+			chat_id = Message.chat.id,
+			text = "Доступ к функциям бота от имени администратора разрешён."
+		)
+		IsPassword = True
+		return
 
-	else:
-		IsPassword = False
+	if not IsPassword and not User.has_permissions("base_access"):
+		AccessAlert(Message.chat.id, Bot)
+		return
+	
+	if User.expected_type == "prompt":
+		Options.set_prompt(Message.text)
+		SendKlingOptions(Bot, User)
 
-		if Message.text == Settings["password"]:
-			User.add_permissions(["base_access"])
-			Bot.send_message(
-				chat_id = Message.chat.id,
-				text = "Доступ к функциям бота разрешён."
-			)
-			IsPassword = True
+	elif User.expected_type == "kling_cookies":
+		User.reset_expected_type()
+		Kling.initialize(Message.text)
 
-		if Message.text == Settings["admin_password"]:
-			User.add_permissions(["admin", "base_access"])
-			Bot.send_message(
-				chat_id = Message.chat.id,
-				text = "Доступ к функциям бота от имени администратора разрешён."
-			)
-			IsPassword = True
-
-		if not IsPassword and User.has_permissions("base_access"):
-			User.set_property("post", Message.text)
+		if Kling.is_enabled:
 			Bot.send_message(
 				chat_id = User.id,
-				text = "Выберите соотношение сторон иллюстрации.",
-				reply_markup = InlineKeyboards.select_ratio()
+				text = "<b>Kling AI</b> подключен.",
+				parse_mode = "HTML"
+			)
+			Settings["kling_ai"]["cookies"] = Message.text
+			Settings.save()
+
+		else:
+			Bot.send_message(
+				chat_id = User.id,
+				text = "Не удалось подключить <b>Kling AI</b> Попробуйте нажать /kling и повторить процедуру.",
+				parse_mode = "HTML"
 			)
 
-	if not User.has_permissions("base_access"): AccessAlert(Message.chat.id, Bot)
+	else:
+		Options.drop()
+		User.set_property("post", Message.text)
+		if os.path.exists(f"Data/Buffer/{User.id}"): RemoveDirectoryContent(f"Data/Buffer/{User.id}")
+		Bot.send_message(
+			chat_id = User.id,
+			text = "Выберите соотношение сторон вложения.",
+			reply_markup = InlineKeyboards.select_ratio()
+		)
 	
+#==========================================================================================#
+# >>>>> ОБРАБОТКА INLINE-КНОПОК <<<<< #
+#==========================================================================================#
+
 @Bot.callback_query_handler(lambda Call: Call.data.startswith("ratio"))
-def CallbackQuery(Call: types.CallbackQuery):
+def CallbackQuery_Ratio(Call: types.CallbackQuery):
 	User = UsersManagerObject.auth(Call.from_user)
 	Bot.delete_message(User.id, Call.message.id)
 
-	if User.has_permissions("base_access"):
-		User.set_property("ratio", Call.data.split("_")[-1])
+	if not User.has_permissions("base_access"):
+		AccessAlert(User.id, Bot)
+		return
 
-		if Kling.is_enabled and Kling.coins_count > MIN_COINS:
+	User.set_property("ratio", Call.data.split("_")[-1])
+	
+	if Kling.is_enabled:
+		Bot.send_message(
+			chat_id = User.id,
+			text = "Выберите желаемый тип вложения.",
+			reply_markup = InlineKeyboards.media_types()
+		)
+
+	else: QueueObject.append_sdxl(User)
+
+@Bot.callback_query_handler(lambda Call: Call.data.startswith("select_media"))
+def CallbackQuery_SelectMedia(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+	Master.safely_delete_messages(User.id, Call.message.id)
+	Type = Call.data[13:]
+	Options = KlingOptions(User)
+
+	if Type == "images":
+
+		if Kling.is_enabled:
 			Bot.send_message(
 				chat_id = User.id,
 				text = "Выберите желаемый способ генерации иллюстраций.",
@@ -291,10 +379,12 @@ def CallbackQuery(Call: types.CallbackQuery):
 
 		else: QueueObject.append_sdxl(User)
 
-	else: AccessAlert(User.id, Bot)
+	elif Type == "video": 
+		Options.set_prompt(User.get_property("post"))
+		CallbackQuery_KlingYes(Call)
 
 @Bot.callback_query_handler(lambda Call: Call.data.startswith("image_generator"))
-def CallbackQuery(Call: types.CallbackQuery):
+def CallbackQuery_ImageGeneratot(Call: types.CallbackQuery):
 	User = UsersManagerObject.auth(Call.from_user)
 	Bot.delete_message(User.id, Call.message.id)
 	Value = Call.data.split("_")[-1]
@@ -307,43 +397,36 @@ def CallbackQuery(Call: types.CallbackQuery):
 	else: QueueObject.append_sdxl(User)
 
 @Bot.callback_query_handler(lambda Call: Call.data == "delete_message")
-def CallbackQuery(Call: types.CallbackQuery):
+def CallbackQuery_DeleteMessage(Call: types.CallbackQuery):
 	User = UsersManagerObject.auth(Call.from_user)
-	TeleMaster(Bot).safely_delete_messages(User.id, Call.message.id)
-
-@Bot.callback_query_handler(lambda Call: Call.data == "kling_yes")
-def CallbackQuery_KlingYes(Call: types.CallbackQuery):
-	User = UsersManagerObject.auth(Call.from_user)
+	User.reset_expected_type()
 	Master.safely_delete_messages(User.id, Call.message.id)
 
-	if not User.has_permissions("base_access"): 
-		AccessAlert(User.id, Bot)
-		return
-	
-	Options = KlingOptions(User)
-	
-	Bot.send_photo(
-		chat_id = User.id,
-		photo = types.InputFile(Options.image_path),
-		caption = Options.prompt or "Настройте вашу генерацию:",
-		reply_markup = InlineKeyboards.kling_options(User)
-	)
-
-@Bot.callback_query_handler(lambda Call: Call.data == "kling_no")
-def CallbackQuery(Call: types.CallbackQuery):
+@Bot.callback_query_handler(lambda Call: Call.data == "retry")
+def CallbackQuery_Retry(Call: types.CallbackQuery):
 	User = UsersManagerObject.auth(Call.from_user)
-	Bot.delete_message(User.id, Call.message.id)
 
-	if not User.has_permissions("base_access"): 
+	if not User.has_permissions("base_access"):
 		AccessAlert(User.id, Bot)
 		return
 	
-	SendPostWithImage(Bot, User, KlingOptions(User).image_path)
-	User.set_property("post", None)
-	RemoveDirectoryContent(f"Data/Buffer/{User.id}")
+	LastOperation = User.get_property("last_operation")
+	Master.safely_delete_messages(User.id, Call.message.id)
+
+	if LastOperation == "images":
+		LastProvider = User.get_property("last_provider")
+
+		if LastProvider == "sdxl": QueueObject.append_sdxl(User)
+		elif LastProvider == "kling": QueueObject.append_kling(User)
+
+	elif LastOperation == "video": CallbackQuery_KlingYes(Call)
+
+#==========================================================================================#
+# >>>>> ОБРАБОТКА INLINE-КНОПОК KLING AI <<<<< #
+#==========================================================================================#
 
 @Bot.callback_query_handler(lambda Call: Call.data.startswith("kling_options_duration"))
-def CallbackQuery(Call: types.CallbackQuery):
+def CallbackQuery_KlingOptionsDuration(Call: types.CallbackQuery):
 	User = UsersManagerObject.auth(Call.from_user)
 
 	Value: bool = Call.data.split("_")[-1] == "10"
@@ -356,18 +439,17 @@ def CallbackQuery(Call: types.CallbackQuery):
 	)
 
 @Bot.callback_query_handler(lambda Call: Call.data.startswith("kling_options_prompt"))
-def CallbackQuery(Call: types.CallbackQuery):
+def CallbackQuery_KlingOptionsPrompt(Call: types.CallbackQuery):
 	User = UsersManagerObject.auth(Call.from_user)
 	User.set_expected_type("prompt")
-	Bot.delete_message(Call.message.chat.id, Call.message.id)
-	Bot.send_message(User.id, "Отправьте описание запроса:")
+	Master.safely_delete_messages(Call.message.chat.id, Call.message.id)
+	Bot.send_message(User.id, "Отправьте описание запроса.")
 
 @Bot.callback_query_handler(lambda Call: Call.data.startswith("kling_options_version"))
-def CallbackQuery(Call: types.CallbackQuery):
+def CallbackQuery_KlingOptionsVersion(Call: types.CallbackQuery):
 	User = UsersManagerObject.auth(Call.from_user)
-
 	Value: str = Call.data.split("_")[-1]
-	Value = "1." + Value[-1]
+	Value = Value[:1] + "." + Value[1:]
 	KlingOptions(User).select_model(Value)
 	
 	Bot.edit_message_reply_markup(
@@ -389,11 +471,11 @@ def CallbackQuery_KlingGenerate(Call: types.CallbackQuery):
 	User.set_property("last_provider", "kling")
 	User.set_property("last_operation", "video")
 
-	Notification = Bot.send_message(User.id, "<i>Видео генерируется. Это займёт от 2 до 5 минут...</i>", parse_mode = "HTML")
+	Notification = Bot.send_message(User.id, "<i>Видео генерируется. Это займёт от 2 до 10 минут...</i>", parse_mode = "HTML")
 
 	Link = Kling.generate_video(
-		image_path = Options.image_path,
 		prompt = Options.prompt,
+		image_path = Options.image_path,
 		extend = Options.extend,
 		model = Options.model
 	)
@@ -407,24 +489,30 @@ def CallbackQuery_KlingGenerate(Call: types.CallbackQuery):
 		reply_markup = InlineKeyboards.retry()
 	)
 
-@Bot.callback_query_handler(lambda Call: Call.data == "retry")
-def CallbackQuery(Call: types.CallbackQuery):
+@Bot.callback_query_handler(lambda Call: Call.data == "kling_yes")
+def CallbackQuery_KlingYes(Call: types.CallbackQuery):
 	User = UsersManagerObject.auth(Call.from_user)
+	Master.safely_delete_messages(User.id, Call.message.id)
 
-	if not User.has_permissions("base_access"):
+	if not User.has_permissions("base_access"): 
 		AccessAlert(User.id, Bot)
 		return
 	
-	LastOperation = User.get_property("last_operation")
-	Master.safely_delete_messages(User.id, Call.message.id)
+	User.set_expected_type("prompt")
+	SendKlingOptions(Bot, User)
 
-	if LastOperation == "images":
-		LastProvider = User.get_property("last_provider")
+@Bot.callback_query_handler(lambda Call: Call.data == "kling_no")
+def CallbackQuery(Call: types.CallbackQuery):
+	User = UsersManagerObject.auth(Call.from_user)
+	Bot.delete_message(User.id, Call.message.id)
 
-		if LastProvider == "sdxl": QueueObject.append_sdxl(User)
-		elif LastProvider == "kling": QueueObject.append_kling(User)
-
-	elif LastOperation == "video": CallbackQuery_KlingYes(Call)
+	if not User.has_permissions("base_access"): 
+		AccessAlert(User.id, Bot)
+		return
+	
+	SendPostWithImage(Bot, User, KlingOptions(User).image_path)
+	User.set_property("post", None)
+	RemoveDirectoryContent(f"Data/Buffer/{User.id}")
 
 @Bot.callback_query_handler(func = lambda Query: True)
 def CallbackQuery(Query: types.CallbackQuery):

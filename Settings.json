@@ -7,7 +7,7 @@
 		"hf_token": "",
 		"hf_space": "KingNish/SDXL-Flash",
 		"negative": [],
-		"steps": 8,
+		"steps": 15,
 		"ratio": {
 			"horizontal": [1080, 720],
 			"square": [1024, 1024],
@@ -15,6 +15,8 @@
 		}
 	},
 	"kling_ai": {
+		"email": "",
+		"password": "",
 		"cookies": "",
 		"min_coins": 40
 	}

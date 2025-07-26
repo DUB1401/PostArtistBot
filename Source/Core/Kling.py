@@ -1,10 +1,13 @@
+# from dublib.Methods.Data import CheckForCyrillic
 from dublib.TelebotUtils.Users import UserData
+from dublib.Engine.Configurator import Config
 
 from typing import Any, Literal, TypeAlias
 from os import PathLike
 import os
 
-from kling import ImageGen, VideoGen
+# from deep_translator import GoogleTranslator
+from kling import ImageGen, VideoGen, Authorizator
 import requests
 
 #==========================================================================================#
@@ -27,18 +30,18 @@ class KlingOptions:
 		return self.__Data["extend"]
 
 	@property
-	def image_path(self) -> PathLike:
+	def image_path(self) -> PathLike | None:
 		"""Путь к изображению."""
 
 		Index = self.__Data["image_index"]
 		Path = f"Data/Buffer/{self.__User.id}/{Index}.jpg"
-		if Index == None or not os.path.exists(Path): raise FileNotFoundError(Path)
+		if Index == None or not os.path.exists(Path): Path = None
 		
 		return Path
 	
 	@property
 	def model(self) -> str:
-		"""Номер версии модели: *1.0*, *1.6*."""
+		"""Номер версии модели: *1.0*, *1.6*, *2.1*."""
 		
 		return self.__Data["model"]
 	
@@ -80,7 +83,7 @@ class KlingOptions:
 		self.__User = user
 		self.__OriginalData = {
 			"image_index": None,
-			"model": "1.0",
+			"model": "1.6",
 			"extend": False,
 			"prompt": None
 		}
@@ -127,15 +130,15 @@ class KlingOptions:
 		self.__Data["image_index"] = index
 		self.save()
 
-	def select_model(self, model: str):
+	def select_model(self, model: Literal["1.0", "1.6", "2.1"]):
 		"""
 		Выбирает версию модели.
 
-		:param model: Версия модели: *1.0* или *1.6*.
+		:param model: Версия модели.
 		:type model: str
 		"""
 
-		if model not in ("1.0", "1.6"): raise ValueError("Only 1.0 and 1.6 supported.")
+		if model not in ("1.0", "1.6", "2.1"): raise ValueError("Only 1.0, 1.6 and 2.1 supported.")
 		self.__Data["model"] = model
 		self.save()
 
@@ -156,16 +159,29 @@ class KlingAdapter:
 	#==========================================================================================#
 
 	@property
-	def coins_count(self) -> int:
+	def coins_count(self) -> int | None:
 		"""Количество монет на аккаунте."""
 
-		return int(self.__VideoGenerator.get_account_point())
+		try: 
+			Coins = int(self.__VideoGenerator.get_account_point())
+			return Coins
+		
+		except (AssertionError, AttributeError): pass
 
 	@property
 	def is_enabled(self) -> bool:
 		"""Состояние: активен ли генератор."""
 
-		return self.__VideoGenerator != None
+		CoinsCount = self.coins_count
+		if self.__VideoGenerator and CoinsCount == None: self.auth()
+
+		return self.__VideoGenerator and CoinsCount and CoinsCount > self.min_coins
+
+	@property
+	def min_coins(self) -> int:
+		"""Минимальное количество монет, требующееся для работы **Kling AI**."""
+
+		return self.__KlingSettings["min_coins"]
 
 	#==========================================================================================#
 	# >>>>> ПРИВАТНЫЕ МЕТОДЫ <<<<< #
@@ -198,28 +214,58 @@ class KlingAdapter:
 	# >>>>> ПУБЛИЧНЫЕ МЕТОДЫ <<<<< #
 	#==========================================================================================#
 
-	def __init__(self, cookies: str):
+	def __init__(self, settings: "Config"):
 		"""
 		Абстракция генерации **Kling AI**.
+
+		:param settings: Системные параметры.
+		:type settings: Config
+		"""
+
+		self.__Settings = settings
+
+		self.__KlingSettings = settings["kling_ai"]
+		self.__VideoGenerator = None
+		self.__ImageGenerator = None
+		self.__Authorizator = Authorizator()
+
+		if self.__KlingSettings["cookies"]: self.initialize(self.__KlingSettings["cookies"])
+		if not self.is_enabled: self.auth()
+
+	def auth(self):
+		"""Выполняет авторизацию и получение токена."""
+
+		if all((self.__KlingSettings["email"], self.__KlingSettings["password"])):
+			self.__Authorizator.auth(self.__KlingSettings["email"], self.__KlingSettings["password"])
+			self.__KlingSettings["cookies"] = self.__Authorizator.cookies
+			self.initialize(self.__KlingSettings["cookies"])
+			if self.is_enabled: self.__Settings.set("kling_ai", self.__KlingSettings)
+
+	def initialize(self, cookies: str):
+		"""
+		Инициализирует генераторы через загрузку файлов Cookies.
 
 		:param cookies: Строковое представление Cookies для авторизации в сервисе.
 		:type cookies: str
 		"""
 
-		self.__VideoGenerator = VideoGen(cookies) if cookies else None
-		self.__ImageGenerator = ImageGen(cookies) if cookies else None
+		try:
+			self.__VideoGenerator = VideoGen(cookies)
+			self.__ImageGenerator = ImageGen(cookies)
 
-	def generate_video(self, image_path: PathLike, prompt: str, extend: bool = False, model: str = "1.0") -> URL:
+		except: pass
+
+	def generate_video(self, prompt: str, image_path: PathLike | None = None, extend: bool = False, model: Literal["1.0", "1.6", "2.1"] = "1.0") -> URL:
 		"""
 		Генерирует видео на основе иллюстрации.
 
-		:param image_path: Путь к выбранной	иллюстрации.
-		:type image_path: PathLike
 		:param prompt: Описание генерации.
 		:type prompt: str
+		:param image_path: Путь к выбранной	иллюстрации.
+		:type image_path: PathLike | None
 		:param extend: Указывает, нужно ли увеличить длительность видео до 10 секунд.
 		:type extend: bool
-		:param model: Версия модели: *1.0* или *1.6*.
+		:param model: Версия модели
 		:type model: str
 		:return: Ссылка на видео.
 		:rtype: str
@@ -246,6 +292,7 @@ class KlingAdapter:
 		:rtype: tuple[URL]
 		"""
 
+		# if CheckForCyrillic(prompt): prompt = GoogleTranslator().translate(prompt)
 		ImagesLinks = self.__ImageGenerator.get_images(prompt, ratio = ratio, count = count)
 		for Index in range(len(ImagesLinks)): self.__DownloadImage(ImagesLinks[Index], user_id, Index)
 

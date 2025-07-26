@@ -1,8 +1,12 @@
+from Source.Core.Kling import KlingOptions
+from Source.UI import InlineKeyboards
+
 from dublib.TelebotUtils.Users import UserData
 
 from telebot import TeleBot, types
 from os import PathLike
 import urllib.request
+import os
 
 def AccessAlert(chat_id: int, bot: TeleBot):
 	"""
@@ -92,3 +96,30 @@ def SendPostWithVideo(bot: TeleBot, user: UserData, video_url: str):
 		)
 		bot.send_video(chat_id = user.id, video = types.InputFile(VideoPath))
 		bot.send_message(chat_id = user.id, text = user.get_property("post"), parse_mode = "HTML")
+
+def SendKlingOptions(bot: TeleBot, user: UserData):
+	"""
+	Отправляет панель настроек **Kling AI**.
+
+	:param bot: Бот Telegram.
+	:type bot: TeleBot
+	:param user: Данные пользователя.
+	:type user: UserData
+	"""
+
+	Options = KlingOptions(user)
+
+	if Options.image_path:
+		bot.send_photo(
+			chat_id = user.id,
+			photo = types.InputFile(Options.image_path),
+			caption = Options.prompt or "Настройте вашу генерацию:",
+			reply_markup = InlineKeyboards.kling_options(user)
+		)
+
+	else:
+		bot.send_message(
+			chat_id = user.id,
+			text = Options.prompt or "Настройте вашу генерацию:",
+			reply_markup = InlineKeyboards.kling_options(user)
+		)
